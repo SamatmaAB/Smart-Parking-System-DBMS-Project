@@ -2,7 +2,8 @@
   "name": "smart-parking-dbms",
   "version": "1.0.0",
   "private": true,
-  "description": "Smart parking management mini project backed by SQLite",
+  "description": "Smart parking management mini project for Vercel and local SQLite",
   "scripts": { "start": "node server.js" },
-  "engines": { "node": ">=22.5" }
+  "engines": { "node": ">=22.5" },
+  "dependencies": { "@neondatabase/serverless": "^1.2.0" }
 }

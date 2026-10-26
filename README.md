@@ -1,16 +1,24 @@
 # Parkwise Smart Parking
 
-A local smart parking management mini project based on `smart_parking_chen_er.drawio`.
-The browser dashboard uses Node.js and its built-in SQLite module, so it has no package dependencies.
+A smart parking management mini project based on `smart_parking_chen_er.drawio`.
+The browser dashboard runs locally with SQLite or on Vercel with Neon Postgres.
 
 ## Run it
 
 1. Install Node.js 22.5 or newer.
 2. Open this folder in a terminal.
-3. Run `npm start`.
+3. Run `node server.js` (or `npm.cmd start` in PowerShell).
 4. Open [http://localhost:3000](http://localhost:3000).
 
-The app creates `smart_parking.db` in this folder on first start and seeds a Central Plaza lot with a dozen spaces. The SQLite schema covers the 14 entities in the E-R diagram. The MySQL version is available separately in `smart_parking_schema.sql`.
+The local server creates `smart_parking.db` in this folder on first start and seeds a Central Plaza lot with a dozen spaces. The SQLite schema covers the 14 entities in the E-R diagram. The MySQL version is available separately in `smart_parking_schema.sql`.
+
+## Deploy to Vercel
+
+1. Import `SamatmaAB/Smart-Parking-System-DBMS-Project` from the Vercel dashboard and keep the project root as the repository root.
+2. Create and connect a Neon Postgres database through Vercel Marketplace. This provides the `DATABASE_URL` environment variable to the project.
+3. Deploy. The first API request creates the Postgres tables and seeds a Central Plaza lot with 12 spaces.
+
+Vercel serves the dashboard from `public/` and routes `/api/*` to the serverless function in `api/[...path].js`. Do not use the SQLite file for deployed writes: Vercel Functions do not provide persistent shared local storage.
 
 ## Current workflows
 
