@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Parkwise — Smart Parking</title><link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/"><span class="brand-mark">P</span><span>parkwise<small>SMART PARKING</small></span></a>
+    <div class="nav-label">WORKSPACE</div>
+    <button class="nav active" data-view="overview"><span>◫</span> Overview</button>
+    <button class="nav" data-view="parking"><span>▦</span> Parking</button>
+    <button class="nav" data-view="people"><span>♙</span> People & vehicles</button>
+    <button class="nav" data-view="reservations"><span>◷</span> Reservations</button>
+    <div class="sidebar-foot"><div class="live-dot"></div> Database connected <small>SQLite · local</small></div>
+  </aside>
+  <main class="main">
+    <header class="topbar"><div><span class="eyebrow">SMART PARKING SYSTEM</span><h1 id="page-title">Overview</h1></div><div class="top-actions"><span class="today" id="today"></span><button class="button button-dark" id="refresh">↻ &nbsp;Refresh</button></div></header>
+    <section id="toast" class="toast" hidden></section>
+    <section id="overview" class="view">
+      <div class="welcome"><div><span class="eyebrow light">PARKING OPERATIONS</span><h2>Good parking starts here.</h2><p>Manage your facilities and keep every space moving.</p></div><div class="welcome-icon">⌖</div></div>
+      <div class="metrics">
+        <article class="metric"><div class="metric-head">TOTAL SPACES <span class="metric-icon blue">▦</span></div><strong id="m-capacity">—</strong><small>across all parking lots</small></article>
+        <article class="metric"><div class="metric-head">AVAILABLE NOW <span class="metric-icon green">✓</span></div><strong id="m-available">—</strong><small>ready for a vehicle</small></article>
+        <article class="metric"><div class="metric-head">CURRENTLY PARKED <span class="metric-icon orange">↗</span></div><strong id="m-active">—</strong><small id="m-occupied">— slots occupied</small></article>
+        <article class="metric"><div class="metric-head">PAYMENTS COLLECTED <span class="metric-icon purple">₹</span></div><strong id="m-revenue">—</strong><small>recorded to date</small></article>
+      </div>
+      <div class="section-heading"><div><span class="eyebrow">FACILITIES</span><h2>Your parking lots</h2></div><button class="button button-primary" data-action="lot">＋ Add parking lot</button></div>
+      <div id="lot-grid" class="lot-grid"></div>
+      <div class="two-col">
+        <section class="panel"><div class="panel-heading"><div><span class="eyebrow">LIVE ACTIVITY</span><h3>Recent parking sessions</h3></div><button class="text-button" data-view="parking">View parking →</button></div><div id="recent-sessions"></div></section>
+        <section class="panel quick-panel"><span class="eyebrow">QUICK ACTIONS</span><h3>Get things moving</h3><button class="quick-action" data-action="user"><span class="qa-icon">＋</span><span><b>Add a customer</b><small>Register a user and their vehicle</small></span><span class="arrow">→</span></button><button class="quick-action" data-action="reservation"><span class="qa-icon">◷</span><span><b>Make a reservation</b><small>Hold an available parking space</small></span><span class="arrow">→</span></button><button class="quick-action" data-action="checkin"><span class="qa-icon">↗</span><span><b>Check in a vehicle</b><small>Start a new parking session</small></span><span class="arrow">→</span></button></section>
+      </div>
+    </section>
+    <section id="parking" class="view" hidden>
+      <div class="section-heading"><div><span class="eyebrow">FACILITY MANAGEMENT</span><h2>Lots, zones & spaces</h2></div><button class="button button-primary" data-action="lot">＋ Add parking lot</button></div>
+      <div class="parking-layout"><div class="panel"><div class="panel-heading"><div><span class="eyebrow">PARKING INVENTORY</span><h3>Spaces by lot</h3></div></div><div id="space-list"></div></div><div class="panel"><span class="eyebrow">OPERATIONS</span><h3>Manage spaces</h3><button class="wide-action" data-action="zone">＋ Add zone</button><button class="wide-action" data-action="slot">＋ Add parking space</button><div class="divider"></div><span class="eyebrow">ACTIVE SESSIONS</span><div id="active-sessions"></div></div></div>
+    </section>
+    <section id="people" class="view" hidden>
+      <div class="section-heading"><div><span class="eyebrow">CUSTOMER DIRECTORY</span><h2>People & vehicles</h2></div><button class="button button-primary" data-action="user">＋ Add customer</button></div>
+      <div class="panel"><div class="panel-heading"><div><span class="eyebrow">REGISTERED USERS</span><h3>Customers</h3></div><button class="button button-outline" data-action="vehicle">＋ Add vehicle</button></div><div id="people-list"></div></div>
+    </section>
+    <section id="reservations" class="view" hidden>
+      <div class="section-heading"><div><span class="eyebrow">BOOK A SPACE</span><h2>Reservations</h2></div><button class="button button-primary" data-action="reservation">＋ New reservation</button></div>
+      <div class="panel"><div class="panel-heading"><div><span class="eyebrow">UPCOMING & RECENT</span><h3>Reservation list</h3></div></div><div id="reservation-list"></div></div>
+    </section>
+  </main>
+  <dialog id="modal"><form id="modal-form" method="dialog"><div class="modal-head"><div><span class="eyebrow" id="modal-eyebrow">NEW RECORD</span><h2 id="modal-title"></h2></div><button class="close" value="cancel" aria-label="Close">×</button></div><div id="form-fields" class="form-fields"></div><div class="modal-actions"><button class="button button-outline" value="cancel">Cancel</button><button class="button button-primary" id="submit-button" value="default">Save</button></div></form></dialog>
+  <script src="/app.js"></script>
+</body>
+</html>
