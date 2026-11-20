@@ -45,6 +45,33 @@ interface User {
   loyalty_points?: number;
 }
 
+interface Customer {
+  user_id: number;
+  name: string;
+  email: string;
+  phone?: string;
+  tier_id: number;
+  tier_name: string;
+  discount_pct: number;
+  loyalty_points: number;
+}
+
+interface CustomerDashboardData {
+  customer: Customer;
+  vehicles: Vehicle[];
+  activeSessions: ParkingSession[];
+  pastSessions: ParkingSession[];
+  reservations: Reservation[];
+  violations: Violation[];
+  availableSlots: Array<{
+    slot_id: number;
+    slot_type: string;
+    level: string;
+    lot_name: string;
+    lot_id: number;
+  }>;
+}
+
 // 3. Vehicles
 interface Vehicle {
   vehicle_id: number;
@@ -110,6 +137,7 @@ interface Reservation {
   plate_no?: string;
   lot_name?: string;
   level?: string;
+  slot_type?: string;
 }
 
 // 9. ParkingSessions
@@ -124,8 +152,10 @@ interface ParkingSession {
   vehicle_type?: string;
   lot_name?: string;
   level?: string;
+  slot_type?: string;
   payment_amount?: number;
   payment_method?: string;
+  paid_at?: string;
 }
 
 // 10. Payments
@@ -249,6 +279,31 @@ export default function Dashboard() {
   const [regPassword, setRegPassword] = useState('');
   const [regRole, setRegRole] = useState('admin');
 
+  // Customer Portal State
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [customerDashboard, setCustomerDashboard] = useState<CustomerDashboardData | null>(null);
+  const [portalType, setPortalType] = useState<'staff' | 'customer'>('staff');
+  const [customerTab, setCustomerTab] = useState<'overview' | 'vehicles' | 'reservations' | 'history' | 'violations'>('overview');
+  const [activeCustomerModal, setActiveCustomerModal] = useState<'vehicle' | 'reservation' | null>(null);
+
+  // Customer Auth form state
+  const [custAuthMode, setCustAuthMode] = useState<'login' | 'register'>('login');
+  const [custEmail, setCustEmail] = useState('');
+  const [custPassword, setCustPassword] = useState('');
+  const [custRegName, setCustRegName] = useState('');
+  const [custRegEmail, setCustRegEmail] = useState('');
+  const [custRegPhone, setCustRegPhone] = useState('');
+  const [custRegPassword, setCustRegPassword] = useState('');
+  const [customerAuthError, setCustomerAuthError] = useState('');
+
+  // Customer vehicle & reservation modal form state
+  const [custVehiclePlate, setCustVehiclePlate] = useState('');
+  const [custVehicleType, setCustVehicleType] = useState('Car');
+  const [custResVehicleId, setCustResVehicleId] = useState<string>('');
+  const [custResSlotId, setCustResSlotId] = useState<string>('');
+  const [custResStartTime, setCustResStartTime] = useState<string>('');
+  const [custResEndTime, setCustResEndTime] = useState<string>('');
+
   const showToast = useCallback((message: string, isError = false) => {
     setToast({ message, isError });
     setTimeout(() => setToast(null), 3500);
@@ -264,12 +319,32 @@ export default function Dashboard() {
     return data;
   }, []);
 
+  const fetchCustomerDashboard = useCallback(async () => {
+    try {
+      const res = await apiCall('/api/customer/dashboard');
+      setCustomerDashboard(res);
+      setCustomer(res.customer);
+    } catch (err: any) {
+      showToast(err.message, true);
+    }
+  }, [apiCall, showToast]);
+
   const fetchAuth = useCallback(async () => {
     try {
       const res = await apiCall('/api/me');
       setStaff(res.staff);
+      setCustomer(null);
     } catch {
       setStaff(null);
+      try {
+        const custRes = await apiCall('/api/customer/me');
+        setCustomer(custRes.customer);
+        const dashRes = await apiCall('/api/customer/dashboard');
+        setCustomerDashboard(dashRes);
+      } catch {
+        setCustomer(null);
+        setCustomerDashboard(null);
+      }
     } finally {
       setLoading(false);
     }
@@ -366,6 +441,94 @@ export default function Dashboard() {
       await apiCall('/api/logout', { method: 'POST' });
       setStaff(null);
       showToast('Signed out successfully');
+    } catch (err: any) {
+      showToast(err.message, true);
+    }
+  };
+
+  const handleCustomerLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCustomerAuthError('');
+    try {
+      const res = await apiCall('/api/customer/login', {
+        method: 'POST',
+        body: JSON.stringify({ email: custEmail, password: custPassword }),
+      });
+      setCustomer(res.customer);
+      setStaff(null);
+      showToast(`Welcome back, ${res.customer.name}!`);
+      const dash = await apiCall('/api/customer/dashboard');
+      setCustomerDashboard(dash);
+    } catch (err: any) {
+      setCustomerAuthError(err.message);
+    }
+  };
+
+  const handleCustomerRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCustomerAuthError('');
+    try {
+      const res = await apiCall('/api/customer/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: custRegName,
+          email: custRegEmail,
+          phone: custRegPhone,
+          password: custRegPassword,
+        }),
+      });
+      setCustomer(res.customer);
+      setStaff(null);
+      showToast(`Welcome to Parkwise, ${res.customer.name}!`);
+      const dash = await apiCall('/api/customer/dashboard');
+      setCustomerDashboard(dash);
+    } catch (err: any) {
+      setCustomerAuthError(err.message);
+    }
+  };
+
+  const handleCustomerLogout = async () => {
+    try {
+      await apiCall('/api/customer/logout', { method: 'POST' });
+      setCustomer(null);
+      setCustomerDashboard(null);
+      showToast('Signed out of Customer Portal');
+    } catch (err: any) {
+      showToast(err.message, true);
+    }
+  };
+
+  const handleCustomerAddVehicle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await apiCall('/api/customer/vehicles', {
+        method: 'POST',
+        body: JSON.stringify({ plate_no: custVehiclePlate, type: custVehicleType }),
+      });
+      showToast('Vehicle registered successfully');
+      setCustVehiclePlate('');
+      setActiveCustomerModal(null);
+      fetchCustomerDashboard();
+    } catch (err: any) {
+      showToast(err.message, true);
+    }
+  };
+
+  const handleCustomerReservation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await apiCall('/api/customer/reservations', {
+        method: 'POST',
+        body: JSON.stringify({
+          vehicle_id: custResVehicleId,
+          slot_id: custResSlotId,
+          start_time: custResStartTime,
+          end_time: custResEndTime,
+        }),
+      });
+      showToast('Parking space reservation confirmed!');
+      setActiveCustomerModal(null);
+      fetchCustomerDashboard();
     } catch (err: any) {
       showToast(err.message, true);
     }
@@ -474,161 +637,930 @@ export default function Dashboard() {
     );
   }
 
-  // Production-Ready Authentication View
+  // ==========================================================================
+  // CUSTOMER PORTAL VIEW (When logged in as a registered Customer)
+  // ==========================================================================
+  if (customer) {
+    return (
+      <div className="app-container" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#090d13' }}>
+        {toast && (
+          <div className={`toast-notice ${toast.isError ? 'error' : ''}`}>
+            {toast.message}
+          </div>
+        )}
+
+        {/* Customer Portal Topbar */}
+        <header className="topbar" style={{ padding: '16px 32px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div className="brand-icon">P</div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '18px', fontWeight: 700, color: '#fff' }}>Parkwise</span>
+                <span className="brand-badge" style={{ margin: 0 }}>CUSTOMER PORTAL</span>
+              </div>
+              <p style={{ fontSize: '11.5px', color: 'var(--text-muted)', margin: 0 }}>
+                Smart Driver Dashboard · PES University CSE DBMS Project
+              </p>
+            </div>
+          </div>
+
+          <div className="topbar-right">
+            <div className="role-badge" style={{ background: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.25)' }}>
+              <span style={{ color: '#fff', fontWeight: 600 }}>{customer.name}</span>
+              <span className="status-pill completed" style={{ fontSize: '10px' }}>
+                {customer.tier_name} ({customer.discount_pct}% Off)
+              </span>
+              <span style={{ color: '#38bdf8', fontSize: '11px', fontWeight: 700 }}>
+                {customer.loyalty_points} pts
+              </span>
+            </div>
+
+            <button className="btn btn-outline btn-sm" onClick={fetchCustomerDashboard} title="Refresh real-time status">
+              ↻ Refresh
+            </button>
+
+            <button className="btn btn-outline btn-sm" onClick={handleCustomerLogout}>
+              Sign Out
+            </button>
+          </div>
+        </header>
+
+        {/* Customer Portal Body */}
+        <main style={{ flex: 1, padding: '24px 32px', maxWidth: '1400px', width: '100%', margin: '0 auto' }}>
+          {/* Active Parking Session Alert (If Parked) */}
+          {customerDashboard?.activeSessions && customerDashboard.activeSessions.length > 0 && (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(6, 78, 59, 0.25))',
+              border: '1px solid #10b981',
+              borderRadius: '12px',
+              padding: '18px 24px',
+              marginBottom: '24px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              boxShadow: '0 4px 20px rgba(16, 185, 129, 0.15)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <span style={{ fontSize: '32px' }}>🚘</span>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <strong style={{ fontSize: '16px', color: '#fff' }}>Vehicle Currently Parked</strong>
+                    <span className="status-pill occupied" style={{ background: '#059669', color: '#fff' }}>LIVE SESSION</span>
+                  </div>
+                  <div style={{ color: '#a7f3d0', fontSize: '13px', marginTop: '4px' }}>
+                    Facility: <strong>{customerDashboard.activeSessions[0].lot_name}</strong> · Floor: <strong>{customerDashboard.activeSessions[0].level}</strong> · Space: <strong>Bay #{customerDashboard.activeSessions[0].slot_id}</strong> ({customerDashboard.activeSessions[0].slot_type})
+                  </div>
+                  <div style={{ color: 'var(--text-dim)', fontSize: '12px', marginTop: '3px' }}>
+                    Plate: <strong style={{ color: '#fff' }}>{customerDashboard.activeSessions[0].plate_no}</strong> · Entry Time: {new Date(customerDashboard.activeSessions[0].entry_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-dim)' }}>Session #{customerDashboard.activeSessions[0].session_id}</div>
+                <div style={{ fontSize: '11px', color: '#34d399', marginTop: '4px' }}>Fee calculated automatically at exit</div>
+              </div>
+            </div>
+          )}
+
+          {/* Quick Metrics KPI Grid */}
+          <div className="kpi-grid" style={{ marginBottom: '24px' }}>
+            <div className="kpi-card">
+              <div className="kpi-head">
+                <span>MY VEHICLES</span>
+                <span className="kpi-icon blue">🚗</span>
+              </div>
+              <div className="kpi-val">{customerDashboard?.vehicles?.length || 0}</div>
+              <div className="kpi-sub">Registered to your account</div>
+            </div>
+
+            <div className="kpi-card">
+              <div className="kpi-head">
+                <span>ACTIVE SESSIONS</span>
+                <span className="kpi-icon green">⏱️</span>
+              </div>
+              <div className="kpi-val" style={{ color: '#34d399' }}>
+                {customerDashboard?.activeSessions?.length || 0}
+              </div>
+              <div className="kpi-sub">Vehicles currently in bays</div>
+            </div>
+
+            <div className="kpi-card">
+              <div className="kpi-head">
+                <span>BOOKED RESERVATIONS</span>
+                <span className="kpi-icon orange">📅</span>
+              </div>
+              <div className="kpi-val" style={{ color: '#fbbf24' }}>
+                {customerDashboard?.reservations?.filter(r => r.status === 'confirmed').length || 0}
+              </div>
+              <div className="kpi-sub">Confirmed upcoming slots</div>
+            </div>
+
+            <div className="kpi-card">
+              <div className="kpi-head">
+                <span>LOYALTY REWARDS</span>
+                <span className="kpi-icon purple">🎁</span>
+              </div>
+              <div className="kpi-val" style={{ color: '#c084fc' }}>
+                {customer.loyalty_points} <small style={{ fontSize: '13px' }}>pts</small>
+              </div>
+              <div className="kpi-sub">{customer.tier_name} Tier ({customer.discount_pct}% auto-discount)</div>
+            </div>
+          </div>
+
+          {/* Customer Navigation Bar */}
+          <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-subtle)', marginBottom: '20px', paddingBottom: '10px' }}>
+            {[
+              { id: 'overview', label: 'Overview & Status', icon: '▦' },
+              { id: 'vehicles', label: `My Vehicles (${customerDashboard?.vehicles?.length || 0})`, icon: '🚗' },
+              { id: 'reservations', label: `Reservations (${customerDashboard?.reservations?.length || 0})`, icon: '◷' },
+              { id: 'history', label: `Parking History (${customerDashboard?.pastSessions?.length || 0})`, icon: '💳' },
+              { id: 'violations', label: `Infractions (${customerDashboard?.violations?.length || 0})`, icon: '⚠️' }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setCustomerTab(tab.id as any)}
+                className={`btn ${customerTab === tab.id ? 'btn-primary' : 'btn-outline'}`}
+                style={{ fontSize: '13px' }}
+              >
+                <span>{tab.icon}</span> {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* TAB: OVERVIEW */}
+          {customerTab === 'overview' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
+              <div className="panel">
+                <div className="section-header" style={{ marginBottom: '16px' }}>
+                  <div>
+                    <h2>My Parking Dashboard</h2>
+                    <p>Live status of your vehicle parking and reservations</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="btn btn-outline btn-sm" onClick={() => setActiveCustomerModal('vehicle')}>＋ Add Vehicle</button>
+                    <button className="btn btn-primary btn-sm" onClick={() => setActiveCustomerModal('reservation')}>＋ Book Space</button>
+                  </div>
+                </div>
+
+                {customerDashboard?.vehicles?.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px 20px', background: 'var(--bg-card)', borderRadius: '10px' }}>
+                    <div style={{ fontSize: '36px', marginBottom: '12px' }}>🚗</div>
+                    <strong style={{ fontSize: '15px', color: '#fff' }}>No Vehicles Registered Yet</strong>
+                    <p style={{ fontSize: '13px', color: 'var(--text-dim)', maxWidth: '380px', margin: '8px auto 16px auto' }}>
+                      Register your vehicle with its license plate number to enable automated check-in and pre-booked slot reservations.
+                    </p>
+                    <button className="btn btn-primary btn-sm" onClick={() => setActiveCustomerModal('vehicle')}>
+                      ＋ Register Your First Vehicle
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '12px' }}>
+                      REGISTERED VEHICLES
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '12px', marginBottom: '24px' }}>
+                      {customerDashboard?.vehicles?.map(v => (
+                        <div key={v.vehicle_id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '14px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <strong style={{ fontSize: '15px', color: '#fff', letterSpacing: '0.5px' }}>{v.plate_no}</strong>
+                            <span className="status-pill completed">{v.type}</span>
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '6px' }}>
+                            Vehicle ID #{v.vehicle_id}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '12px' }}>
+                      RECENT RESERVATIONS
+                    </div>
+                    {customerDashboard?.reservations?.length === 0 ? (
+                      <div style={{ color: 'var(--text-dim)', fontSize: '13px', padding: '12px', background: 'var(--bg-card)', borderRadius: '8px' }}>
+                        No upcoming or past reservations. Click "Book Space" above to reserve a parking bay in advance.
+                      </div>
+                    ) : (
+                      <div className="table-responsive">
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Res #</th>
+                              <th>Vehicle</th>
+                              <th>Facility & Space</th>
+                              <th>Window</th>
+                              <th>Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {customerDashboard?.reservations?.slice(0, 3).map(r => (
+                              <tr key={r.res_id}>
+                                <td><strong>#{r.res_id}</strong></td>
+                                <td>{r.plate_no}</td>
+                                <td>{r.lot_name} · Slot #{r.slot_id}</td>
+                                <td>{new Date(r.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – {new Date(r.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                                <td><span className={`status-pill ${r.status}`}>{r.status}</span></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Loyalty Tier Summary Card */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div className="panel">
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#60a5fa', marginBottom: '8px' }}>
+                    LOYALTY REWARDS STATUS
+                  </div>
+                  <div style={{ fontSize: '22px', fontWeight: 700, color: '#fff', marginBottom: '4px' }}>
+                    {customer.tier_name} Tier
+                  </div>
+                  <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', marginBottom: '14px' }}>
+                    Enjoy <strong>{customer.discount_pct}% discount</strong> automatically deducted on all parking fees.
+                  </p>
+
+                  <div style={{ background: 'var(--bg-card)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-subtle)', marginBottom: '14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-dim)' }}>
+                      <span>Loyalty Balance:</span>
+                      <strong style={{ color: '#38bdf8' }}>{customer.loyalty_points} points</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-dim)', marginTop: '4px' }}>
+                      <span>Points per park:</span>
+                      <span style={{ color: '#fff' }}>+25 pts</span>
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-dim)' }}>
+                    • Standard (0% off) · Silver (5% off at 100 pts) · Gold (10% off at 250 pts) · Platinum (15% off at 500 pts)
+                  </div>
+                </div>
+
+                <div className="panel">
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#fff', marginBottom: '8px' }}>
+                    Customer Profile
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12.5px' }}>
+                    <div><span style={{ color: 'var(--text-dim)' }}>Full Name:</span> <strong>{customer.name}</strong></div>
+                    <div><span style={{ color: 'var(--text-dim)' }}>Email:</span> <strong>{customer.email}</strong></div>
+                    <div><span style={{ color: 'var(--text-dim)' }}>Phone:</span> <strong>{customer.phone || 'Not recorded'}</strong></div>
+                    <div><span style={{ color: 'var(--text-dim)' }}>Account ID:</span> <code>User #{customer.user_id}</code></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: VEHICLES */}
+          {customerTab === 'vehicles' && (
+            <div className="panel">
+              <div className="section-header" style={{ marginBottom: '16px' }}>
+                <div>
+                  <h2>My Registered Vehicles</h2>
+                  <p>Vehicles registered under your account for smart barrier recognition</p>
+                </div>
+                <button className="btn btn-primary btn-sm" onClick={() => setActiveCustomerModal('vehicle')}>
+                  ＋ Register New Vehicle
+                </button>
+              </div>
+
+              {customerDashboard?.vehicles?.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
+                  <p>No vehicles linked to your account yet.</p>
+                  <button className="btn btn-primary btn-sm" onClick={() => setActiveCustomerModal('vehicle')}>
+                    ＋ Register Vehicle
+                  </button>
+                </div>
+              ) : (
+                <div className="table-responsive">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Vehicle ID</th>
+                        <th>License Plate</th>
+                        <th>Vehicle Type</th>
+                        <th>Owner</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {customerDashboard?.vehicles?.map(v => (
+                        <tr key={v.vehicle_id}>
+                          <td><strong>#{v.vehicle_id}</strong></td>
+                          <td><strong style={{ fontSize: '14px', letterSpacing: '0.5px' }}>{v.plate_no}</strong></td>
+                          <td><span className="status-pill completed">{v.type}</span></td>
+                          <td>{customer.name}</td>
+                          <td><span className="status-pill available">Active</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB: RESERVATIONS */}
+          {customerTab === 'reservations' && (
+            <div className="panel">
+              <div className="section-header" style={{ marginBottom: '16px' }}>
+                <div>
+                  <h2>Pre-Booked Space Reservations</h2>
+                  <p>Guaranteed space reservations with trigger-enforced overlap prevention</p>
+                </div>
+                <button className="btn btn-primary btn-sm" onClick={() => setActiveCustomerModal('reservation')}>
+                  ＋ Book Space Reservation
+                </button>
+              </div>
+
+              {customerDashboard?.reservations?.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
+                  <p>No reservations found.</p>
+                  <button className="btn btn-primary btn-sm" onClick={() => setActiveCustomerModal('reservation')}>
+                    ＋ Book Parking Space
+                  </button>
+                </div>
+              ) : (
+                <div className="table-responsive">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Res ID</th>
+                        <th>Vehicle Plate</th>
+                        <th>Facility & Level</th>
+                        <th>Bay #</th>
+                        <th>Type</th>
+                        <th>Start Time</th>
+                        <th>End Time</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {customerDashboard?.reservations?.map(r => (
+                        <tr key={r.res_id}>
+                          <td><strong>#{r.res_id}</strong></td>
+                          <td><strong>{r.plate_no}</strong></td>
+                          <td>{r.lot_name} · {r.level}</td>
+                          <td><strong>#{r.slot_id}</strong></td>
+                          <td><span className="status-pill completed">{r.slot_type}</span></td>
+                          <td>{new Date(r.start_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</td>
+                          <td>{new Date(r.end_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</td>
+                          <td><span className={`status-pill ${r.status}`}>{r.status}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB: PARKING & PAYMENT HISTORY */}
+          {customerTab === 'history' && (
+            <div className="panel">
+              <div className="section-header" style={{ marginBottom: '16px' }}>
+                <div>
+                  <h2>Completed Sessions & Payment History</h2>
+                  <p>Audit trail of all previous parking sessions, durations, and payment receipts</p>
+                </div>
+              </div>
+
+              {customerDashboard?.pastSessions?.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
+                  No completed parking sessions recorded yet.
+                </div>
+              ) : (
+                <div className="table-responsive">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Session</th>
+                        <th>Vehicle</th>
+                        <th>Parking Space</th>
+                        <th>Entry Time</th>
+                        <th>Exit Time</th>
+                        <th>Fee Paid</th>
+                        <th>Method</th>
+                        <th>Receipt Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {customerDashboard?.pastSessions?.map(s => (
+                        <tr key={s.session_id}>
+                          <td><strong>#{s.session_id}</strong></td>
+                          <td><strong>{s.plate_no}</strong> <small style={{ color: 'var(--text-dim)' }}>({s.vehicle_type})</small></td>
+                          <td>{s.lot_name} · Bay #{s.slot_id}</td>
+                          <td>{new Date(s.entry_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</td>
+                          <td>{s.exit_time ? new Date(s.exit_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
+                          <td>
+                            <strong style={{ color: '#34d399' }}>
+                              ₹{s.payment_amount !== undefined ? s.payment_amount.toFixed(2) : '0.00'}
+                            </strong>
+                          </td>
+                          <td><span className="status-pill completed">{s.payment_method || 'UPI'}</span></td>
+                          <td>{s.paid_at ? new Date(s.paid_at).toLocaleDateString() : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB: VIOLATIONS */}
+          {customerTab === 'violations' && (
+            <div className="panel">
+              <div className="section-header" style={{ marginBottom: '16px' }}>
+                <div>
+                  <h2>Notices & Infractions</h2>
+                  <p>Parking violations logged on vehicles registered to your account</p>
+                </div>
+              </div>
+
+              {customerDashboard?.violations?.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '36px 20px', background: 'rgba(16, 185, 129, 0.08)', borderRadius: '10px', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
+                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>✓</div>
+                  <strong style={{ fontSize: '15px', color: '#a7f3d0' }}>Clean Driving Record</strong>
+                  <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    No parking infractions, overstay fines, or boundary violations have been logged on your vehicles.
+                  </p>
+                </div>
+              ) : (
+                <div className="table-responsive">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Violation ID</th>
+                        <th>Vehicle</th>
+                        <th>Infraction Description</th>
+                        <th>Fine Amount</th>
+                        <th>Facility</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {customerDashboard?.violations?.map(v => (
+                        <tr key={v.violation_id}>
+                          <td><strong>#{v.violation_id}</strong></td>
+                          <td><strong>{v.plate_no}</strong></td>
+                          <td>{v.type}</td>
+                          <td><strong style={{ color: '#f87171' }}>₹{v.fine_amount.toFixed(2)}</strong></td>
+                          <td>{v.lot_name || 'Central Facility'}</td>
+                          <td><span className="status-pill occupied">Outstanding</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </main>
+
+        {/* CUSTOMER ACTION MODALS */}
+        {activeCustomerModal === 'vehicle' && (
+          <div className="modal-overlay" onClick={() => setActiveCustomerModal(null)}>
+            <div className="modal-dialog" onClick={e => e.stopPropagation()}>
+              <div className="modal-head">
+                <h3>Register Vehicle to My Account</h3>
+                <button className="modal-close-btn" onClick={() => setActiveCustomerModal(null)}>×</button>
+              </div>
+              <form onSubmit={handleCustomerAddVehicle}>
+                <div className="modal-body">
+                  <div className="form-group">
+                    <label>License Plate Number *</label>
+                    <input
+                      className="form-input"
+                      required
+                      placeholder="e.g. KA-01-AB-1234"
+                      value={custVehiclePlate}
+                      onChange={e => setCustVehiclePlate(e.target.value)}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Vehicle Type</label>
+                    <select
+                      className="form-select"
+                      value={custVehicleType}
+                      onChange={e => setCustVehicleType(e.target.value)}
+                    >
+                      <option value="Car">Car</option>
+                      <option value="SUV">SUV</option>
+                      <option value="EV">EV (Electric Vehicle)</option>
+                      <option value="Motorcycle">Motorcycle</option>
+                      <option value="Van">Van</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-outline" onClick={() => setActiveCustomerModal(null)}>Cancel</button>
+                  <button type="submit" className="btn btn-primary">Register Vehicle</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {activeCustomerModal === 'reservation' && (
+          <div className="modal-overlay" onClick={() => setActiveCustomerModal(null)}>
+            <div className="modal-dialog" onClick={e => e.stopPropagation()}>
+              <div className="modal-head">
+                <h3>Book Guaranteed Parking Space</h3>
+                <button className="modal-close-btn" onClick={() => setActiveCustomerModal(null)}>×</button>
+              </div>
+              <form onSubmit={handleCustomerReservation}>
+                <div className="modal-body">
+                  <div className="form-group">
+                    <label>Select Your Vehicle *</label>
+                    <select
+                      className="form-select"
+                      required
+                      value={custResVehicleId}
+                      onChange={e => setCustResVehicleId(e.target.value)}
+                    >
+                      <option value="">Select vehicle...</option>
+                      {customerDashboard?.vehicles?.map(v => (
+                        <option key={v.vehicle_id} value={v.vehicle_id}>{v.plate_no} ({v.type})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Select Parking Space *</label>
+                    <select
+                      className="form-select"
+                      required
+                      value={custResSlotId}
+                      onChange={e => setCustResSlotId(e.target.value)}
+                    >
+                      <option value="">Select available space...</option>
+                      {customerDashboard?.availableSlots?.map(s => (
+                        <option key={s.slot_id} value={s.slot_id}>
+                          {s.lot_name} · {s.level} · Bay #{s.slot_id} ({s.slot_type})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Start Time *</label>
+                    <input
+                      className="form-input"
+                      type="datetime-local"
+                      required
+                      value={custResStartTime}
+                      onChange={e => setCustResStartTime(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>End Time *</label>
+                    <input
+                      className="form-input"
+                      type="datetime-local"
+                      required
+                      value={custResEndTime}
+                      onChange={e => setCustResEndTime(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-outline" onClick={() => setActiveCustomerModal(null)}>Cancel</button>
+                  <button type="submit" className="btn btn-primary">Confirm Space Booking</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // DUAL PORTAL AUTHENTICATION VIEW (Staff vs Customer Portal)
+  // ==========================================================================
   if (!staff) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '20px', background: '#090d13' }}>
-        <div className="modal-dialog" style={{ maxWidth: '440px', width: '100%' }}>
+        <div className="modal-dialog" style={{ maxWidth: '460px', width: '100%' }}>
           <div className="brand-section" style={{ borderBottom: '1px solid var(--border-subtle)', textAlign: 'center' }}>
             <span className="brand-badge">PES UNIVERSITY CSE DBMS</span>
             <div className="brand-title" style={{ justifyContent: 'center' }}>
               <span className="brand-icon">P</span>
               <span>Parkwise</span>
             </div>
-            <p className="brand-sub">Smart Parking Management System · Production Portal</p>
+            <p className="brand-sub">Smart Parking Management System · Multi-Portal Gateway</p>
           </div>
 
-          {/* Auth Mode Tabs */}
-          <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)' }}>
+          {/* Primary Portal Switcher: Staff vs Customer */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', padding: '16px 24px 0 24px' }}>
             <button
               type="button"
-              onClick={() => { setAuthMode('login'); setLoginError(''); }}
-              style={{
-                flex: 1, padding: '12px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 600,
-                color: authMode === 'login' ? '#60a5fa' : 'var(--text-dim)',
-                borderBottom: authMode === 'login' ? '2px solid #60a5fa' : '2px solid transparent',
-              }}
+              onClick={() => { setPortalType('staff'); setLoginError(''); setCustomerAuthError(''); }}
+              className={`btn ${portalType === 'staff' ? 'btn-primary' : 'btn-outline'}`}
+              style={{ fontSize: '12.5px', padding: '9px 12px', justifyContent: 'center' }}
             >
-              Sign In
+              🏢 Staff & Operator
             </button>
             <button
               type="button"
-              onClick={() => { setAuthMode('register'); setLoginError(''); }}
-              style={{
-                flex: 1, padding: '12px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 600,
-                color: authMode === 'register' ? '#60a5fa' : 'var(--text-dim)',
-                borderBottom: authMode === 'register' ? '2px solid #60a5fa' : '2px solid transparent',
-              }}
+              onClick={() => { setPortalType('customer'); setLoginError(''); setCustomerAuthError(''); }}
+              className={`btn ${portalType === 'customer' ? 'btn-primary' : 'btn-outline'}`}
+              style={{ fontSize: '12.5px', padding: '9px 12px', justifyContent: 'center' }}
             >
-              Register Staff Account
+              🚗 Customer & Driver
             </button>
           </div>
 
-          {authMode === 'login' ? (
-            <form onSubmit={handleLogin} style={{ padding: '28px' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>Staff Sign In</h2>
-              <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', marginBottom: '20px' }}>
-                Enter your credentials to access system management and operational tools.
-              </p>
-
-              {loginError && (
-                <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger)', color: '#fca5a5', padding: '10px 14px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px' }}>
-                  {loginError}
-                </div>
-              )}
-
-              <div className="form-group" style={{ marginBottom: '16px' }}>
-                <label>Staff Email</label>
-                <input
-                  className="form-input"
-                  type="email"
-                  required
-                  placeholder="you@parkwise.local"
-                  value={loginEmail}
-                  onChange={e => setLoginEmail(e.target.value)}
-                />
-              </div>
-
-              <div className="form-group" style={{ marginBottom: '22px' }}>
-                <label>Password</label>
-                <input
-                  className="form-input"
-                  type="password"
-                  required
-                  placeholder="••••••••••••"
-                  value={loginPassword}
-                  onChange={e => setLoginPassword(e.target.value)}
-                />
-              </div>
-
-              <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '10px' }}>
-                Sign In to System
-              </button>
-
-              <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)', fontSize: '12px', color: 'var(--text-dim)' }}>
-                <strong>Default Staff Credentials:</strong>
-                <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <div>• Administrator: <code>admin@parkwise.local</code> / <code>Parkwise!2026</code></div>
-                  <div>• Floor Attendant: <code>attendant@parkwise.local</code> / <code>Attendant!2026</code></div>
-                </div>
-              </div>
-            </form>
-          ) : (
-            <form onSubmit={handleRegister} style={{ padding: '28px' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>Register New Staff Account</h2>
-              <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', marginBottom: '20px' }}>
-                Create a new staff account to access the parking management system.
-              </p>
-
-              {loginError && (
-                <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger)', color: '#fca5a5', padding: '10px 14px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px' }}>
-                  {loginError}
-                </div>
-              )}
-
-              <div className="form-group" style={{ marginBottom: '14px' }}>
-                <label>Full Name</label>
-                <input
-                  className="form-input"
-                  type="text"
-                  required
-                  placeholder="e.g. Aarav Sharma"
-                  value={regName}
-                  onChange={e => setRegName(e.target.value)}
-                />
-              </div>
-
-              <div className="form-group" style={{ marginBottom: '14px' }}>
-                <label>Email Address</label>
-                <input
-                  className="form-input"
-                  type="email"
-                  required
-                  placeholder="e.g. aarav@parkwise.local"
-                  value={regEmail}
-                  onChange={e => setRegEmail(e.target.value)}
-                />
-              </div>
-
-              <div className="form-group" style={{ marginBottom: '14px' }}>
-                <label>Password (min. 6 characters)</label>
-                <input
-                  className="form-input"
-                  type="password"
-                  required
-                  minLength={6}
-                  placeholder="••••••••••••"
-                  value={regPassword}
-                  onChange={e => setRegPassword(e.target.value)}
-                />
-              </div>
-
-              <div className="form-group" style={{ marginBottom: '22px' }}>
-                <label>System Role</label>
-                <select
-                  className="form-select"
-                  value={regRole}
-                  onChange={e => setRegRole(e.target.value)}
+          {/* 1. STAFF PORTAL AUTH */}
+          {portalType === 'staff' && (
+            <div>
+              <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)', marginTop: '14px' }}>
+                <button
+                  type="button"
+                  onClick={() => { setAuthMode('login'); setLoginError(''); }}
+                  style={{
+                    flex: 1, padding: '10px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 600,
+                    color: authMode === 'login' ? '#60a5fa' : 'var(--text-dim)',
+                    borderBottom: authMode === 'login' ? '2px solid #60a5fa' : '2px solid transparent',
+                  }}
                 >
-                  <option value="admin">Administrator (Full Access)</option>
-                  <option value="attendant">Floor Attendant (Operational Access)</option>
-                </select>
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setAuthMode('register'); setLoginError(''); }}
+                  style={{
+                    flex: 1, padding: '10px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 600,
+                    color: authMode === 'register' ? '#60a5fa' : 'var(--text-dim)',
+                    borderBottom: authMode === 'register' ? '2px solid #60a5fa' : '2px solid transparent',
+                  }}
+                >
+                  Register Staff Account
+                </button>
               </div>
 
-              <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '10px' }}>
-                Create Account & Sign In
-              </button>
-            </form>
+              {authMode === 'login' ? (
+                <form onSubmit={handleLogin} style={{ padding: '24px 28px' }}>
+                  <h2 style={{ fontSize: '17px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>Staff & Administrator Sign In</h2>
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '18px' }}>
+                    Access facility controls, bay allocations, pricing rules, and live SQL telemetry.
+                  </p>
+
+                  {loginError && (
+                    <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger)', color: '#fca5a5', padding: '10px 14px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px' }}>
+                      {loginError}
+                    </div>
+                  )}
+
+                  <div className="form-group" style={{ marginBottom: '14px' }}>
+                    <label>Staff Email</label>
+                    <input
+                      className="form-input"
+                      type="email"
+                      required
+                      placeholder="admin@parkwise.local or attendant@parkwise.local"
+                      value={loginEmail}
+                      onChange={e => setLoginEmail(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '20px' }}>
+                    <label>Password</label>
+                    <input
+                      className="form-input"
+                      type="password"
+                      required
+                      placeholder="••••••••••••"
+                      value={loginPassword}
+                      onChange={e => setLoginPassword(e.target.value)}
+                    />
+                  </div>
+
+                  <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '10px' }}>
+                    Sign In to Staff Console
+                  </button>
+
+                  <div style={{ marginTop: '18px', paddingTop: '14px', borderTop: '1px solid var(--border-subtle)', fontSize: '11.5px', color: 'var(--text-dim)' }}>
+                    <strong>Default Staff Credentials:</strong>
+                    <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                      <div>• Administrator: <code>admin@parkwise.local</code> / <code>Parkwise!2026</code></div>
+                      <div>• Floor Attendant: <code>attendant@parkwise.local</code> / <code>Attendant!2026</code></div>
+                    </div>
+                  </div>
+                </form>
+              ) : (
+                <form onSubmit={handleRegister} style={{ padding: '24px 28px' }}>
+                  <h2 style={{ fontSize: '17px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>Register New Staff Account</h2>
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '18px' }}>
+                    Create a new administrative or attendant account to access system operations.
+                  </p>
+
+                  {loginError && (
+                    <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger)', color: '#fca5a5', padding: '10px 14px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px' }}>
+                      {loginError}
+                    </div>
+                  )}
+
+                  <div className="form-group" style={{ marginBottom: '12px' }}>
+                    <label>Full Name</label>
+                    <input
+                      className="form-input"
+                      type="text"
+                      required
+                      placeholder="e.g. Aarav Sharma"
+                      value={regName}
+                      onChange={e => setRegName(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '12px' }}>
+                    <label>Email Address</label>
+                    <input
+                      className="form-input"
+                      type="email"
+                      required
+                      placeholder="e.g. aarav@parkwise.local"
+                      value={regEmail}
+                      onChange={e => setRegEmail(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '12px' }}>
+                    <label>Password (min. 6 characters)</label>
+                    <input
+                      className="form-input"
+                      type="password"
+                      required
+                      minLength={6}
+                      placeholder="••••••••••••"
+                      value={regPassword}
+                      onChange={e => setRegPassword(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '20px' }}>
+                    <label>System Role</label>
+                    <select
+                      className="form-select"
+                      value={regRole}
+                      onChange={e => setRegRole(e.target.value)}
+                    >
+                      <option value="admin">Administrator (Full Access)</option>
+                      <option value="attendant">Floor Attendant (Operational Access)</option>
+                    </select>
+                  </div>
+
+                  <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '10px' }}>
+                    Create Staff Account & Sign In
+                  </button>
+                </form>
+              )}
+            </div>
+          )}
+
+          {/* 2. CUSTOMER PORTAL AUTH */}
+          {portalType === 'customer' && (
+            <div>
+              <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)', marginTop: '14px' }}>
+                <button
+                  type="button"
+                  onClick={() => { setCustAuthMode('login'); setCustomerAuthError(''); }}
+                  style={{
+                    flex: 1, padding: '10px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 600,
+                    color: custAuthMode === 'login' ? '#38bdf8' : 'var(--text-dim)',
+                    borderBottom: custAuthMode === 'login' ? '2px solid #38bdf8' : '2px solid transparent',
+                  }}
+                >
+                  Customer Sign In
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setCustAuthMode('register'); setCustomerAuthError(''); }}
+                  style={{
+                    flex: 1, padding: '10px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 600,
+                    color: custAuthMode === 'register' ? '#38bdf8' : 'var(--text-dim)',
+                    borderBottom: custAuthMode === 'register' ? '2px solid #38bdf8' : '2px solid transparent',
+                  }}
+                >
+                  New Customer Registration
+                </button>
+              </div>
+
+              {custAuthMode === 'login' ? (
+                <form onSubmit={handleCustomerLogin} style={{ padding: '24px 28px' }}>
+                  <h2 style={{ fontSize: '17px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>Customer / Driver Sign In</h2>
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '18px' }}>
+                    View your vehicle status, parking history, space reservations, and loyalty rewards.
+                  </p>
+
+                  {customerAuthError && (
+                    <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger)', color: '#fca5a5', padding: '10px 14px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px' }}>
+                      {customerAuthError}
+                    </div>
+                  )}
+
+                  <div className="form-group" style={{ marginBottom: '14px' }}>
+                    <label>Registered Customer Email</label>
+                    <input
+                      className="form-input"
+                      type="email"
+                      required
+                      placeholder="e.g. yourname@example.com"
+                      value={custEmail}
+                      onChange={e => setCustEmail(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '20px' }}>
+                    <label>Password</label>
+                    <input
+                      className="form-input"
+                      type="password"
+                      required
+                      placeholder="••••••••••••"
+                      value={custPassword}
+                      onChange={e => setCustPassword(e.target.value)}
+                    />
+                  </div>
+
+                  <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '10px', background: '#0284c7' }}>
+                    Sign In to Customer Dashboard
+                  </button>
+
+                  <div style={{ marginTop: '18px', paddingTop: '14px', borderTop: '1px solid var(--border-subtle)', fontSize: '11.5px', color: 'var(--text-dim)' }}>
+                    💡 <strong>Default customer credentials:</strong> Accounts created by admin have default password <code>Customer!2026</code>.
+                  </div>
+                </form>
+              ) : (
+                <form onSubmit={handleCustomerRegister} style={{ padding: '24px 28px' }}>
+                  <h2 style={{ fontSize: '17px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>Register Customer Account</h2>
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '18px' }}>
+                    Create your personal driver account to register vehicles, pre-book bays, and collect points.
+                  </p>
+
+                  {customerAuthError && (
+                    <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger)', color: '#fca5a5', padding: '10px 14px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px' }}>
+                      {customerAuthError}
+                    </div>
+                  )}
+
+                  <div className="form-group" style={{ marginBottom: '12px' }}>
+                    <label>Full Name *</label>
+                    <input
+                      className="form-input"
+                      type="text"
+                      required
+                      placeholder="e.g. Rohan Iyer"
+                      value={custRegName}
+                      onChange={e => setCustRegName(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '12px' }}>
+                    <label>Email Address *</label>
+                    <input
+                      className="form-input"
+                      type="email"
+                      required
+                      placeholder="e.g. rohan.iyer@example.com"
+                      value={custRegEmail}
+                      onChange={e => setCustRegEmail(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '12px' }}>
+                    <label>Phone Number</label>
+                    <input
+                      className="form-input"
+                      placeholder="e.g. +91 98450 12345"
+                      value={custRegPhone}
+                      onChange={e => setCustRegPhone(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '20px' }}>
+                    <label>Password (min. 6 characters) *</label>
+                    <input
+                      className="form-input"
+                      type="password"
+                      required
+                      minLength={6}
+                      placeholder="••••••••••••"
+                      value={custRegPassword}
+                      onChange={e => setCustRegPassword(e.target.value)}
+                    />
+                  </div>
+
+                  <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '10px', background: '#0284c7' }}>
+                    Register & Open Customer Portal
+                  </button>
+                </form>
+              )}
+            </div>
           )}
         </div>
       </div>

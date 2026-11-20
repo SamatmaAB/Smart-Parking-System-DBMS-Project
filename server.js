@@ -57,12 +57,20 @@ CREATE TABLE IF NOT EXISTS AuthSessions (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS CustomerAuthSessions (
+    token_hash TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES Users(user_id) ON DELETE CASCADE,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS Users (
     user_id INTEGER PRIMARY KEY AUTOINCREMENT,
     tier_id INTEGER REFERENCES LoyaltyTiers(tier_id) ON UPDATE CASCADE ON DELETE SET NULL,
     name TEXT NOT NULL,
     phone TEXT,
     email TEXT NOT NULL UNIQUE,
+    password_hash TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -223,6 +231,10 @@ LEFT JOIN Zones z ON z.lot_id = p.lot_id
 LEFT JOIN Slots s ON s.zone_id = z.zone_id
 GROUP BY p.lot_id, p.name, p.location;
 `);
+
+try {
+  db.exec('ALTER TABLE Users ADD COLUMN password_hash TEXT;');
+} catch {}
 
 // ----------------------------------------------------------------------------
 // 2. AUTHENTICATION & PASSWORD HASHING (scrypt + timingSafeEqual)
@@ -553,6 +565,30 @@ function getCurrentStaff(req) {
   return session || null;
 }
 
+function getCurrentCustomer(req) {
+  const cookie = req.headers.cookie || '';
+  const token = cookie
+    .split(';')
+    .map(p => p.trim())
+    .find(p => p.startsWith('parkwise_customer_session='))
+    ?.slice('parkwise_customer_session='.length);
+
+  if (!token) return null;
+  const tokenHash = crypto.createHash('sha256').update(decodeURIComponent(token)).digest('hex');
+  const session = db.prepare(`
+    SELECT u.user_id, u.name, u.email, u.phone, u.tier_id,
+           COALESCE(lt.tier_name, 'Standard') AS tier_name,
+           COALESCE(lt.discount_pct, 0.0) AS discount_pct,
+           COALESCE((SELECT COUNT(*) FROM ParkingSessions ps JOIN Vehicles v USING(vehicle_id) WHERE v.user_id = u.user_id) * 25, 0) AS loyalty_points
+    FROM CustomerAuthSessions s
+    JOIN Users u USING(user_id)
+    LEFT JOIN LoyaltyTiers lt USING(tier_id)
+    WHERE s.token_hash = ? AND datetime(s.expires_at) > datetime('now')
+  `).get(tokenHash);
+
+  return session || null;
+}
+
 // ----------------------------------------------------------------------------
 // 7. REST API ROUTER
 // ----------------------------------------------------------------------------
@@ -663,6 +699,281 @@ async function handleApi(req, res, url) {
     }
     res.setHeader('Set-Cookie', 'parkwise_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
     return send(res, 200, { ok: true });
+  }
+
+  // --------------------------------------------------------------------------
+  // Customer Authentication & Portal Endpoints
+  // --------------------------------------------------------------------------
+  if (req.method === 'POST' && url.pathname === '/api/customer/register') {
+    try {
+      const data = await parseBody(req);
+      requireFields(data, ['name', 'email', 'password']);
+      const name = String(data.name).trim();
+      const email = String(data.email).trim().toLowerCase();
+      const password = String(data.password);
+      const phone = data.phone ? String(data.phone).trim() : null;
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return send(res, 400, { error: 'Please enter a valid email address.' });
+      }
+      if (password.length < 6) {
+        return send(res, 400, { error: 'Password must be at least 6 characters long.' });
+      }
+
+      const existing = db.prepare('SELECT user_id FROM Users WHERE LOWER(email) = ?').get(email);
+      if (existing) {
+        return send(res, 409, { error: 'An account with this email address already exists. Please sign in.' });
+      }
+
+      const hash = passwordHash(password);
+      const resUser = db.prepare(`
+        INSERT INTO Users (name, email, phone, tier_id, password_hash)
+        VALUES (?, ?, ?, 1, ?)
+      `).run(name, email, phone, hash);
+
+      const userId = Number(resUser.lastInsertRowid);
+      const token = crypto.randomBytes(32).toString('base64url');
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      db.prepare(`
+        INSERT INTO CustomerAuthSessions (token_hash, user_id, expires_at)
+        VALUES (?, ?, datetime('now', '+12 hours'))
+      `).run(tokenHash, userId);
+
+      res.setHeader('Set-Cookie', `parkwise_customer_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200`);
+      return send(res, 201, {
+        customer: {
+          user_id: userId,
+          name,
+          email,
+          phone,
+          tier_id: 1,
+          tier_name: 'Standard',
+          discount_pct: 0.0,
+          loyalty_points: 0
+        },
+        message: 'Customer account registered successfully.'
+      });
+    } catch (err) {
+      return send(res, 400, { error: err.message });
+    }
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/customer/login') {
+    try {
+      const data = await parseBody(req);
+      const email = String(data.email || '').trim().toLowerCase();
+      const password = String(data.password || '');
+
+      const user = db.prepare(`
+        SELECT u.*, lt.tier_name, lt.discount_pct,
+               COALESCE((SELECT COUNT(*) FROM ParkingSessions ps JOIN Vehicles v USING(vehicle_id) WHERE v.user_id = u.user_id) * 25, 0) AS loyalty_points
+        FROM Users u
+        LEFT JOIN LoyaltyTiers lt USING(tier_id)
+        WHERE LOWER(u.email) = ?
+      `).get(email);
+
+      if (!user) {
+        return send(res, 401, { error: 'Invalid customer email address or password' });
+      }
+
+      if (!user.password_hash) {
+        return send(res, 401, { error: 'No password set for this account. Please register or contact system administrator.' });
+      }
+
+      if (!verifyPassword(password, user.password_hash)) {
+        return send(res, 401, { error: 'Invalid customer email address or password' });
+      }
+
+      const token = crypto.randomBytes(32).toString('base64url');
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      db.prepare(`
+        INSERT INTO CustomerAuthSessions (token_hash, user_id, expires_at)
+        VALUES (?, ?, datetime('now', '+12 hours'))
+      `).run(tokenHash, user.user_id);
+
+      res.setHeader('Set-Cookie', `parkwise_customer_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200`);
+      return send(res, 200, {
+        customer: {
+          user_id: user.user_id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          tier_id: user.tier_id,
+          tier_name: user.tier_name || 'Standard',
+          discount_pct: user.discount_pct || 0,
+          loyalty_points: user.loyalty_points || 0
+        }
+      });
+    } catch (err) {
+      return send(res, 400, { error: err.message });
+    }
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/customer/me') {
+    const customer = getCurrentCustomer(req);
+    return customer ? send(res, 200, { customer }) : send(res, 401, { error: 'Customer authentication required' });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/customer/logout') {
+    const customer = getCurrentCustomer(req);
+    if (customer) {
+      const cookie = req.headers.cookie || '';
+      const token = cookie.split(';').map(p => p.trim()).find(p => p.startsWith('parkwise_customer_session='))?.slice('parkwise_customer_session='.length);
+      if (token) {
+        const tokenHash = crypto.createHash('sha256').update(decodeURIComponent(token)).digest('hex');
+        db.prepare('DELETE FROM CustomerAuthSessions WHERE token_hash = ?').run(tokenHash);
+      }
+    }
+    res.setHeader('Set-Cookie', 'parkwise_customer_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
+    return send(res, 200, { ok: true });
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/customer/dashboard') {
+    const customer = getCurrentCustomer(req);
+    if (!customer) return send(res, 401, { error: 'Customer authentication required' });
+
+    const uid = customer.user_id;
+
+    const vehicles = db.prepare('SELECT * FROM Vehicles WHERE user_id = ? ORDER BY vehicle_id DESC').all(uid);
+
+    const activeSessions = db.prepare(`
+      SELECT ps.*, v.plate_no, v.type AS vehicle_type, s.slot_id, s.slot_type, p.name AS lot_name, p.location AS lot_location, z.level
+      FROM ParkingSessions ps
+      JOIN Vehicles v USING(vehicle_id)
+      JOIN Slots s USING(slot_id)
+      JOIN Zones z USING(zone_id)
+      JOIN ParkingLots p USING(lot_id)
+      WHERE v.user_id = ? AND ps.exit_time IS NULL
+      ORDER BY ps.entry_time DESC
+    `).all(uid);
+
+    const pastSessions = db.prepare(`
+      SELECT ps.*, v.plate_no, v.type AS vehicle_type, s.slot_id, p.name AS lot_name, z.level,
+             pay.payment_id, pay.amount AS payment_amount, pay.method AS payment_method, pay.paid_at
+      FROM ParkingSessions ps
+      JOIN Vehicles v USING(vehicle_id)
+      JOIN Slots s USING(slot_id)
+      JOIN Zones z USING(zone_id)
+      JOIN ParkingLots p USING(lot_id)
+      LEFT JOIN Payments pay USING(session_id)
+      WHERE v.user_id = ? AND ps.exit_time IS NOT NULL
+      ORDER BY ps.exit_time DESC LIMIT 20
+    `).all(uid);
+
+    const reservations = db.prepare(`
+      SELECT r.*, v.plate_no, s.slot_id, s.slot_type, p.name AS lot_name, p.location AS lot_location, z.level
+      FROM Reservations r
+      JOIN Vehicles v USING(vehicle_id)
+      JOIN Slots s USING(slot_id)
+      JOIN Zones z USING(zone_id)
+      JOIN ParkingLots p USING(lot_id)
+      WHERE r.user_id = ?
+      ORDER BY r.start_time DESC
+    `).all(uid);
+
+    const violations = db.prepare(`
+      SELECT vio.*, v.plate_no, ps.entry_time, ps.exit_time, p.name AS lot_name
+      FROM Violations vio
+      JOIN ParkingSessions ps USING(session_id)
+      JOIN Vehicles v USING(vehicle_id)
+      JOIN Slots s USING(slot_id)
+      JOIN Zones z USING(zone_id)
+      JOIN ParkingLots p USING(lot_id)
+      WHERE v.user_id = ?
+      ORDER BY vio.violation_id DESC
+    `).all(uid);
+
+    const availableSlots = db.prepare(`
+      SELECT s.slot_id, s.slot_type, z.level, p.name AS lot_name, p.lot_id
+      FROM Slots s
+      JOIN Zones z USING(zone_id)
+      JOIN ParkingLots p USING(lot_id)
+      WHERE s.status = 'available'
+      ORDER BY p.name, z.level, s.slot_id
+    `).all();
+
+    return send(res, 200, {
+      customer,
+      vehicles,
+      activeSessions,
+      pastSessions,
+      reservations,
+      violations,
+      availableSlots
+    });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/customer/vehicles') {
+    const customer = getCurrentCustomer(req);
+    if (!customer) return send(res, 401, { error: 'Customer authentication required' });
+
+    try {
+      const data = await parseBody(req);
+      requireFields(data, ['plate_no', 'type']);
+      const plateNo = String(data.plate_no).trim().toUpperCase();
+      const type = String(data.type).trim();
+
+      const existingPlate = db.prepare('SELECT vehicle_id FROM Vehicles WHERE plate_no = ?').get(plateNo);
+      if (existingPlate) {
+        return send(res, 409, { error: `Vehicle with license plate '${plateNo}' is already registered.` });
+      }
+
+      const resVeh = db.prepare('INSERT INTO Vehicles (user_id, plate_no, type) VALUES (?, ?, ?)').run(
+        customer.user_id,
+        plateNo,
+        type
+      );
+      return send(res, 201, {
+        ok: true,
+        vehicle_id: Number(resVeh.lastInsertRowid),
+        message: 'Vehicle registered to your account successfully'
+      });
+    } catch (err) {
+      return send(res, 400, { error: err.message });
+    }
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/customer/reservations') {
+    const customer = getCurrentCustomer(req);
+    if (!customer) return send(res, 401, { error: 'Customer authentication required' });
+
+    try {
+      const data = await parseBody(req);
+      requireFields(data, ['vehicle_id', 'slot_id', 'start_time', 'end_time']);
+      const start = new Date(data.start_time);
+      const end = new Date(data.end_time);
+      if (end <= start) throw new Error('Reservation end time must be after start time');
+
+      const vehicle = db.prepare('SELECT user_id FROM Vehicles WHERE vehicle_id = ?').get(Number(data.vehicle_id));
+      if (!vehicle || Number(vehicle.user_id) !== Number(customer.user_id)) {
+        throw new Error('Selected vehicle does not belong to your account');
+      }
+
+      const slot = db.prepare('SELECT status FROM Slots WHERE slot_id = ?').get(Number(data.slot_id));
+      if (!slot || slot.status !== 'available') throw new Error('Selected parking space is not currently available');
+
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const resBooking = db.prepare(`
+          INSERT INTO Reservations (user_id, vehicle_id, slot_id, start_time, end_time, status)
+          VALUES (?, ?, ?, ?, ?, 'confirmed')
+        `).run(customer.user_id, Number(data.vehicle_id), Number(data.slot_id), data.start_time, data.end_time);
+
+        db.prepare("UPDATE Slots SET status = 'reserved' WHERE slot_id = ?").run(Number(data.slot_id));
+        db.exec('COMMIT');
+
+        return send(res, 201, {
+          ok: true,
+          res_id: Number(resBooking.lastInsertRowid),
+          message: 'Parking space reservation confirmed!'
+        });
+      } catch (e) {
+        db.exec('ROLLBACK');
+        throw e;
+      }
+    } catch (err) {
+      return send(res, 400, { error: err.message });
+    }
   }
 
   // System Health & Engine Status
@@ -1141,11 +1452,14 @@ async function handleApi(req, res, url) {
             return send(res, 400, { error: 'Selected loyalty tier is invalid.' });
           }
 
-          const resUser = db.prepare('INSERT INTO Users (name, email, phone, tier_id) VALUES (?, ?, ?, ?)').run(
+          const pwd = data.password ? String(data.password) : 'Customer!2026';
+          const hash = passwordHash(pwd);
+          const resUser = db.prepare('INSERT INTO Users (name, email, phone, tier_id, password_hash) VALUES (?, ?, ?, ?, ?)').run(
             name,
             email,
             phone,
-            tierId
+            tierId,
+            hash
           );
           return send(res, 201, {
             ok: true,
