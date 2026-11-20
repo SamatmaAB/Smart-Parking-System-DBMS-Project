@@ -243,6 +243,11 @@ export default function Dashboard() {
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [regName, setRegName] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regRole, setRegRole] = useState('admin');
 
   const showToast = useCallback((message: string, isError = false) => {
     setToast({ message, isError });
@@ -336,6 +341,21 @@ export default function Dashboard() {
       });
       setStaff(res.staff);
       showToast(`Welcome, ${res.staff.name}`);
+    } catch (err: any) {
+      setLoginError(err.message);
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    try {
+      const res = await apiCall('/api/register', {
+        method: 'POST',
+        body: JSON.stringify({ name: regName, email: regEmail, password: regPassword, role: regRole }),
+      });
+      setStaff(res.staff);
+      showToast(`Account created! Welcome, ${res.staff.name}`);
     } catch (err: any) {
       setLoginError(err.message);
     }
@@ -467,54 +487,149 @@ export default function Dashboard() {
             </div>
             <p className="brand-sub">Smart Parking Management System · Production Portal</p>
           </div>
-          <form onSubmit={handleLogin} style={{ padding: '28px' }}>
-            <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>Staff Sign In</h2>
-            <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', marginBottom: '20px' }}>
-              Enter your credentials to access system management and operational tools.
-            </p>
 
-            {loginError && (
-              <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger)', color: '#fca5a5', padding: '10px 14px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px' }}>
-                {loginError}
-              </div>
-            )}
-
-            <div className="form-group" style={{ marginBottom: '16px' }}>
-              <label>Staff Email</label>
-              <input
-                className="form-input"
-                type="email"
-                required
-                placeholder="admin@parkwise.local or attendant@parkwise.local"
-                value={loginEmail}
-                onChange={e => setLoginEmail(e.target.value)}
-              />
-            </div>
-
-            <div className="form-group" style={{ marginBottom: '22px' }}>
-              <label>Password</label>
-              <input
-                className="form-input"
-                type="password"
-                required
-                placeholder="••••••••••••"
-                value={loginPassword}
-                onChange={e => setLoginPassword(e.target.value)}
-              />
-            </div>
-
-            <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '10px' }}>
-              Sign In to System
+          {/* Auth Mode Tabs */}
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)' }}>
+            <button
+              type="button"
+              onClick={() => { setAuthMode('login'); setLoginError(''); }}
+              style={{
+                flex: 1, padding: '12px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 600,
+                color: authMode === 'login' ? '#60a5fa' : 'var(--text-dim)',
+                borderBottom: authMode === 'login' ? '2px solid #60a5fa' : '2px solid transparent',
+              }}
+            >
+              Sign In
             </button>
+            <button
+              type="button"
+              onClick={() => { setAuthMode('register'); setLoginError(''); }}
+              style={{
+                flex: 1, padding: '12px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 600,
+                color: authMode === 'register' ? '#60a5fa' : 'var(--text-dim)',
+                borderBottom: authMode === 'register' ? '2px solid #60a5fa' : '2px solid transparent',
+              }}
+            >
+              Register Staff Account
+            </button>
+          </div>
 
-            <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)', fontSize: '12px', color: 'var(--text-dim)' }}>
-              <strong>Staff Credentials:</strong>
-              <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <div>• Administrator: <code>admin@parkwise.local</code> / <code>Parkwise!2026</code></div>
-                <div>• Floor Attendant: <code>attendant@parkwise.local</code> / <code>Attendant!2026</code></div>
+          {authMode === 'login' ? (
+            <form onSubmit={handleLogin} style={{ padding: '28px' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>Staff Sign In</h2>
+              <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', marginBottom: '20px' }}>
+                Enter your credentials to access system management and operational tools.
+              </p>
+
+              {loginError && (
+                <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger)', color: '#fca5a5', padding: '10px 14px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px' }}>
+                  {loginError}
+                </div>
+              )}
+
+              <div className="form-group" style={{ marginBottom: '16px' }}>
+                <label>Staff Email</label>
+                <input
+                  className="form-input"
+                  type="email"
+                  required
+                  placeholder="you@parkwise.local"
+                  value={loginEmail}
+                  onChange={e => setLoginEmail(e.target.value)}
+                />
               </div>
-            </div>
-          </form>
+
+              <div className="form-group" style={{ marginBottom: '22px' }}>
+                <label>Password</label>
+                <input
+                  className="form-input"
+                  type="password"
+                  required
+                  placeholder="••••••••••••"
+                  value={loginPassword}
+                  onChange={e => setLoginPassword(e.target.value)}
+                />
+              </div>
+
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '10px' }}>
+                Sign In to System
+              </button>
+
+              <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)', fontSize: '12px', color: 'var(--text-dim)' }}>
+                <strong>Default Staff Credentials:</strong>
+                <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div>• Administrator: <code>admin@parkwise.local</code> / <code>Parkwise!2026</code></div>
+                  <div>• Floor Attendant: <code>attendant@parkwise.local</code> / <code>Attendant!2026</code></div>
+                </div>
+              </div>
+            </form>
+          ) : (
+            <form onSubmit={handleRegister} style={{ padding: '28px' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>Register New Staff Account</h2>
+              <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', marginBottom: '20px' }}>
+                Create a new staff account to access the parking management system.
+              </p>
+
+              {loginError && (
+                <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger)', color: '#fca5a5', padding: '10px 14px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px' }}>
+                  {loginError}
+                </div>
+              )}
+
+              <div className="form-group" style={{ marginBottom: '14px' }}>
+                <label>Full Name</label>
+                <input
+                  className="form-input"
+                  type="text"
+                  required
+                  placeholder="e.g. Aarav Sharma"
+                  value={regName}
+                  onChange={e => setRegName(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '14px' }}>
+                <label>Email Address</label>
+                <input
+                  className="form-input"
+                  type="email"
+                  required
+                  placeholder="e.g. aarav@parkwise.local"
+                  value={regEmail}
+                  onChange={e => setRegEmail(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '14px' }}>
+                <label>Password (min. 6 characters)</label>
+                <input
+                  className="form-input"
+                  type="password"
+                  required
+                  minLength={6}
+                  placeholder="••••••••••••"
+                  value={regPassword}
+                  onChange={e => setRegPassword(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '22px' }}>
+                <label>System Role</label>
+                <select
+                  className="form-select"
+                  value={regRole}
+                  onChange={e => setRegRole(e.target.value)}
+                >
+                  <option value="admin">Administrator (Full Access)</option>
+                  <option value="attendant">Floor Attendant (Operational Access)</option>
+                </select>
+              </div>
+
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '10px' }}>
+                Create Account & Sign In
+              </button>
+            </form>
+          )}
         </div>
       </div>
     );
@@ -1627,15 +1742,23 @@ export default function Dashboard() {
                   <>
                     <div className="form-group">
                       <label>Full Name</label>
-                      <input className="form-input" required onChange={e => setModalData({ ...modalData, name: e.target.value })} />
+                      <input className="form-input" required placeholder="e.g. Aarav Sharma" onChange={e => setModalData({ ...modalData, name: e.target.value })} />
                     </div>
                     <div className="form-group">
                       <label>Email Address (Unique Key)</label>
-                      <input className="form-input" type="email" required onChange={e => setModalData({ ...modalData, email: e.target.value })} />
+                      <input className="form-input" type="email" required placeholder="e.g. aarav@example.com" onChange={e => setModalData({ ...modalData, email: e.target.value })} />
                     </div>
                     <div className="form-group">
                       <label>Phone Number</label>
-                      <input className="form-input" onChange={e => setModalData({ ...modalData, phone: e.target.value })} />
+                      <input className="form-input" placeholder="e.g. +91 98765 43210" onChange={e => setModalData({ ...modalData, phone: e.target.value })} />
+                    </div>
+                    <div className="form-group">
+                      <label>Loyalty Tier</label>
+                      <select className="form-select" defaultValue="1" onChange={e => setModalData({ ...modalData, tier_id: e.target.value })}>
+                        {loyaltyTiers.map(t => (
+                          <option key={t.tier_id} value={t.tier_id}>{t.tier_name} ({t.discount_pct}% discount · {t.min_points} pts threshold)</option>
+                        ))}
+                      </select>
                     </div>
                   </>
                 )}

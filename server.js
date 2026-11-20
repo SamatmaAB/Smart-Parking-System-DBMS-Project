@@ -296,117 +296,20 @@ function seedEntityData() {
     const z3 = db.prepare('INSERT INTO Zones(lot_id, level, zone_type) VALUES (?, ?, ?)').run(lot1Id, 'Ground Floor', 'VIP & Accessible');
 
     const addSlot = db.prepare('INSERT INTO Slots(zone_id, slot_type, status) VALUES (?, ?, ?)');
-    for (let i = 1; i <= 6; i++) addSlot.run(z1Id, 'Standard', i === 2 ? 'occupied' : 'available');
-    for (let i = 1; i <= 4; i++) addSlot.run(z2.lastInsertRowid, 'EV', i === 1 ? 'occupied' : 'available');
+    for (let i = 1; i <= 6; i++) addSlot.run(z1Id, 'Standard', 'available');
+    for (let i = 1; i <= 4; i++) addSlot.run(z2.lastInsertRowid, 'EV', 'available');
     addSlot.run(z3.lastInsertRowid, 'Accessible', 'available');
     addSlot.run(z3.lastInsertRowid, 'VIP', 'available');
   }
 
-  // 5. Users
-  const userCount = db.prepare('SELECT COUNT(*) n FROM Users').get().n;
-  let u1Id = 1, u2Id = 2, u3Id = 3;
-  if (userCount === 0) {
-    const u1 = db.prepare('INSERT INTO Users(name, phone, email, tier_id) VALUES (?, ?, ?, ?)').run('Aarav Sharma', '+91 98765 43210', 'aarav.sharma@example.com', 4);
-    const u2 = db.prepare('INSERT INTO Users(name, phone, email, tier_id) VALUES (?, ?, ?, ?)').run('Diya Patel', '+91 98234 56789', 'diya.patel@example.com', 3);
-    const u3 = db.prepare('INSERT INTO Users(name, phone, email, tier_id) VALUES (?, ?, ?, ?)').run('Rohan Iyer', '+91 98450 12345', 'rohan.iyer@example.com', 2);
-    db.prepare('INSERT INTO Users(name, phone, email, tier_id) VALUES (?, ?, ?, ?)').run('Ananya Rao', '+91 98111 22334', 'ananya.rao@example.com', 1);
-    db.prepare('INSERT INTO Users(name, phone, email, tier_id) VALUES (?, ?, ?, ?)').run('Vikram Malhotra', '+91 98999 88776', 'vikram.m@example.com', 1);
-    u1Id = Number(u1.lastInsertRowid);
-    u2Id = Number(u2.lastInsertRowid);
-    u3Id = Number(u3.lastInsertRowid);
-  }
-
-  // 6. Vehicles
-  const vehicleCount = db.prepare('SELECT COUNT(*) n FROM Vehicles').get().n;
-  let v1Id = 1, v2Id = 2, v3Id = 3, v4Id = 4;
-  if (vehicleCount === 0) {
-    const v1 = db.prepare('INSERT INTO Vehicles(user_id, plate_no, type) VALUES (?, ?, ?)').run(u1Id, 'KA-01-MJ-5001', 'Car');
-    const v2 = db.prepare('INSERT INTO Vehicles(user_id, plate_no, type) VALUES (?, ?, ?)').run(u1Id, 'KA-01-EV-2024', 'EV');
-    const v3 = db.prepare('INSERT INTO Vehicles(user_id, plate_no, type) VALUES (?, ?, ?)').run(u2Id, 'KA-03-AB-1234', 'SUV');
-    const v4 = db.prepare('INSERT INTO Vehicles(user_id, plate_no, type) VALUES (?, ?, ?)').run(u3Id, 'KA-05-XY-9876', 'Car');
-    db.prepare('INSERT INTO Vehicles(user_id, plate_no, type) VALUES (?, ?, ?)').run(u2Id, 'KA-04-MB-4411', 'Motorcycle');
-    db.prepare('INSERT INTO Vehicles(user_id, plate_no, type) VALUES (?, ?, ?)').run(u3Id, 'KA-02-ZZ-7788', 'Car');
-    v1Id = Number(v1.lastInsertRowid);
-    v2Id = Number(v2.lastInsertRowid);
-    v3Id = Number(v3.lastInsertRowid);
-    v4Id = Number(v4.lastInsertRowid);
-  }
-
-  // 7. Sessions & Payments
-  const sessionCount = db.prepare('SELECT COUNT(*) n FROM ParkingSessions').get().n;
-  let s1Id = 1, s2Id = 2, s3Id = 3;
-  if (sessionCount === 0) {
-    const past3h = new Date(Date.now() - 10800000).toISOString();
-    const past1h = new Date(Date.now() - 3600000).toISOString();
-    const past45m = new Date(Date.now() - 2700000).toISOString();
-    const past90m = new Date(Date.now() - 5400000).toISOString();
-
-    const s1 = db.prepare('INSERT INTO ParkingSessions(vehicle_id, slot_id, entry_time, exit_time) VALUES (?, ?, ?, ?)').run(v4Id, 1, past3h, past1h);
-    s1Id = Number(s1.lastInsertRowid);
-    db.prepare('INSERT INTO Payments(session_id, amount, method, paid_at) VALUES (?, ?, ?, ?)').run(s1Id, 80.0, 'UPI', past1h);
-
-    const s2 = db.prepare('INSERT INTO ParkingSessions(vehicle_id, slot_id, entry_time) VALUES (?, ?, ?)').run(v1Id, 2, past45m);
-    s2Id = Number(s2.lastInsertRowid);
-    db.prepare("UPDATE Slots SET status = 'occupied' WHERE slot_id = 2").run();
-
-    const s3 = db.prepare('INSERT INTO ParkingSessions(vehicle_id, slot_id, entry_time) VALUES (?, ?, ?)').run(v2Id, 7, past90m);
-    s3Id = Number(s3.lastInsertRowid);
-    db.prepare("UPDATE Slots SET status = 'occupied' WHERE slot_id = 7").run();
-  }
-
-  // 8. Reservations
-  const resCount = db.prepare('SELECT COUNT(*) n FROM Reservations').get().n;
-  if (resCount === 0) {
-    db.prepare('INSERT INTO Reservations(user_id, vehicle_id, slot_id, start_time, end_time, status) VALUES (?, ?, ?, ?, ?, ?)').run(
-      u2Id,
-      v3Id,
-      3,
-      new Date(Date.now() + 3600000).toISOString(),
-      new Date(Date.now() + 10800000).toISOString(),
-      'confirmed'
-    );
-    db.prepare("UPDATE Slots SET status = 'reserved' WHERE slot_id = 3").run();
-  }
-
-  // 9. Violations
-  const violationCount = db.prepare('SELECT COUNT(*) n FROM Violations').get().n;
-  if (violationCount === 0) {
-    const anySession = db.prepare('SELECT session_id FROM ParkingSessions LIMIT 1').get();
-    if (anySession) {
-      db.prepare('INSERT INTO Violations(session_id, type, fine_amount) VALUES (?, ?, ?)').run(
-        anySession.session_id,
-        'Overstaying allotted reservation duration',
-        250.0
-      );
-      db.prepare('INSERT INTO Violations(session_id, type, fine_amount) VALUES (?, ?, ?)').run(
-        anySession.session_id,
-        'Improper parking across lane boundary',
-        100.0
-      );
-    }
-  }
-
-  // 10. Charging Sessions (EV)
-  const chargeCount = db.prepare('SELECT COUNT(*) n FROM ChargingSessions').get().n;
-  if (chargeCount === 0) {
-    const evSession = db.prepare('SELECT session_id FROM ParkingSessions ORDER BY session_id DESC LIMIT 1').get();
-    if (evSession) {
-      db.prepare('INSERT INTO ChargingSessions(session_id, kwh_used, cost) VALUES (?, ?, ?)').run(
-        evSession.session_id,
-        18.450,
-        276.75
-      );
-    }
-  }
-
-  // 11. Sensor Logs (IoT)
+  // Baseline Sensor Logs (IoT physical bay telemetry)
   const sensorCount = db.prepare('SELECT COUNT(*) n FROM SensorLogs').get().n;
   if (sensorCount === 0) {
     const addSensor = db.prepare('INSERT INTO SensorLogs(slot_id, reading, logged_at) VALUES (?, ?, ?)');
     addSensor.run(1, 0.00, new Date(Date.now() - 600000).toISOString());
-    addSensor.run(2, 1.00, new Date(Date.now() - 300000).toISOString());
+    addSensor.run(2, 0.00, new Date(Date.now() - 300000).toISOString());
     addSensor.run(3, 0.00, new Date(Date.now() - 180000).toISOString());
-    addSensor.run(7, 1.00, new Date(Date.now() - 120000).toISOString());
+    addSensor.run(7, 0.00, new Date(Date.now() - 120000).toISOString());
   }
 }
 
@@ -684,6 +587,59 @@ async function handleApi(req, res, url) {
       res.setHeader('Set-Cookie', `parkwise_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200`);
       return send(res, 200, {
         staff: { staff_id: account.staff_id, name: account.name, email: account.email, role: account.role }
+      });
+    } catch (err) {
+      return send(res, 400, { error: err.message });
+    }
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/register') {
+    try {
+      const data = await parseBody(req);
+      requireFields(data, ['name', 'email', 'password', 'role']);
+      const name = String(data.name).trim();
+      const email = String(data.email).trim().toLowerCase();
+      const password = String(data.password);
+      const roleName = String(data.role).trim().toLowerCase();
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return send(res, 400, { error: 'Please enter a valid email address.' });
+      }
+      if (password.length < 6) {
+        return send(res, 400, { error: 'Password must be at least 6 characters long.' });
+      }
+      if (!['admin', 'attendant'].includes(roleName)) {
+        return send(res, 400, { error: 'Role must be either "admin" or "attendant".' });
+      }
+
+      const existing = db.prepare('SELECT staff_id FROM StaffAccounts WHERE LOWER(email) = ?').get(email);
+      if (existing) {
+        return send(res, 409, { error: 'A staff account with this email address already exists.' });
+      }
+
+      const roleRow = db.prepare('SELECT role_id FROM Roles WHERE role_name = ?').get(roleName);
+      if (!roleRow) {
+        return send(res, 400, { error: 'Selected role was not recognized in system.' });
+      }
+
+      const hash = passwordHash(password);
+      const resStaff = db.prepare(`
+        INSERT INTO StaffAccounts (name, email, password_hash, role_id)
+        VALUES (?, ?, ?, ?)
+      `).run(name, email, hash, roleRow.role_id);
+
+      const newStaffId = Number(resStaff.lastInsertRowid);
+      const token = crypto.randomBytes(32).toString('base64url');
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      db.prepare(`
+        INSERT INTO AuthSessions (token_hash, staff_id, expires_at)
+        VALUES (?, ?, datetime('now', '+12 hours'))
+      `).run(tokenHash, newStaffId);
+
+      res.setHeader('Set-Cookie', `parkwise_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200`);
+      return send(res, 201, {
+        staff: { staff_id: newStaffId, name, email, role: roleName },
+        message: 'Staff account registered and authenticated successfully.'
       });
     } catch (err) {
       return send(res, 400, { error: err.message });
@@ -1166,22 +1122,63 @@ async function handleApi(req, res, url) {
         }
         case '/api/users': {
           requireFields(data, ['name', 'email']);
-          db.prepare('INSERT INTO Users (name, email, phone, tier_id) VALUES (?, ?, ?, ?)').run(
-            data.name.trim(),
-            data.email.trim().toLowerCase(),
-            data.phone ? data.phone.trim() : null,
-            data.tier_id ? Number(data.tier_id) : 1
+          const name = String(data.name).trim();
+          const email = String(data.email).trim().toLowerCase();
+          const phone = data.phone ? String(data.phone).trim() : null;
+          const tierId = data.tier_id ? Number(data.tier_id) : 1;
+
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            return send(res, 400, { error: 'Please enter a valid email address for the customer.' });
+          }
+
+          const existing = db.prepare('SELECT user_id FROM Users WHERE LOWER(email) = ?').get(email);
+          if (existing) {
+            return send(res, 409, { error: 'A customer with this email address already exists.' });
+          }
+
+          const tier = db.prepare('SELECT tier_id FROM LoyaltyTiers WHERE tier_id = ?').get(tierId);
+          if (!tier) {
+            return send(res, 400, { error: 'Selected loyalty tier is invalid.' });
+          }
+
+          const resUser = db.prepare('INSERT INTO Users (name, email, phone, tier_id) VALUES (?, ?, ?, ?)').run(
+            name,
+            email,
+            phone,
+            tierId
           );
-          return send(res, 201, { ok: true, message: 'Customer registered successfully' });
+          return send(res, 201, {
+            ok: true,
+            user_id: Number(resUser.lastInsertRowid),
+            message: 'Customer registered successfully'
+          });
         }
         case '/api/vehicles': {
           requireFields(data, ['user_id', 'plate_no', 'type']);
-          db.prepare('INSERT INTO Vehicles (user_id, plate_no, type) VALUES (?, ?, ?)').run(
-            Number(data.user_id),
-            data.plate_no.trim().toUpperCase(),
-            data.type.trim()
+          const userId = Number(data.user_id);
+          const plateNo = String(data.plate_no).trim().toUpperCase();
+          const type = String(data.type).trim();
+
+          const user = db.prepare('SELECT user_id FROM Users WHERE user_id = ?').get(userId);
+          if (!user) {
+            return send(res, 404, { error: 'Customer not found.' });
+          }
+
+          const existingPlate = db.prepare('SELECT vehicle_id FROM Vehicles WHERE plate_no = ?').get(plateNo);
+          if (existingPlate) {
+            return send(res, 409, { error: `Vehicle with license plate '${plateNo}' is already registered.` });
+          }
+
+          const resVeh = db.prepare('INSERT INTO Vehicles (user_id, plate_no, type) VALUES (?, ?, ?)').run(
+            userId,
+            plateNo,
+            type
           );
-          return send(res, 201, { ok: true, message: 'Vehicle registered successfully' });
+          return send(res, 201, {
+            ok: true,
+            vehicle_id: Number(resVeh.lastInsertRowid),
+            message: 'Vehicle registered successfully'
+          });
         }
         case '/api/pricing-rules': {
           requireFields(data, ['lot_id', 'slot_type', 'base_rate']);
