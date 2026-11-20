@@ -25,7 +25,7 @@ const db = new DatabaseSync(path.join(ROOT, 'smart_parking.db'));
 db.exec('PRAGMA foreign_keys = ON;');
 
 // ----------------------------------------------------------------------------
-// 1. RELATIONAL DATABASE BOOTSTRAP (DDL with Constraints & Triggers)
+// 1. RELATIONAL DATABASE BOOTSTRAP (16 Tables matching ER Diagram & RBAC)
 // ----------------------------------------------------------------------------
 db.exec(`
 CREATE TABLE IF NOT EXISTS LoyaltyTiers (
@@ -172,7 +172,7 @@ CREATE TABLE IF NOT EXISTS _nosql_parking_notes (
     updated_at TEXT NOT NULL
 );
 
--- Optimization and Uniqueness Indexes
+-- Indexes for Fast Access and Concurrency Constraints
 CREATE INDEX IF NOT EXISTS idx_res_slot_time ON Reservations(slot_id, start_time, end_time);
 CREATE INDEX IF NOT EXISTS idx_sensor_slot_time ON SensorLogs(slot_id, logged_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_vehicle ON ParkingSessions(vehicle_id);
@@ -229,7 +229,7 @@ GROUP BY p.lot_id, p.name, p.location;
 // ----------------------------------------------------------------------------
 db.exec(`
 INSERT OR IGNORE INTO Roles(role_id, role_name, description) VALUES
-(1, 'admin', 'Full administrative privileges: manage lots, zones, slots, users, notes, view analytics'),
+(1, 'admin', 'Full administrative privileges: manage lots, zones, slots, users, pricing, violations, analytics'),
 (2, 'attendant', 'Operational privileges: manage reservations, vehicle check-in, check-out, collect payments');
 `);
 
@@ -245,7 +245,7 @@ function verifyPassword(password, stored) {
   return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
 }
 
-// Seed default staff accounts if not present
+// Seed default staff accounts
 const seedStaff = db.prepare(`
   INSERT OR IGNORE INTO StaffAccounts(staff_id, name, email, password_hash, role_id)
   SELECT ?, ?, ?, ?, role_id FROM Roles WHERE role_name = ?
@@ -253,66 +253,167 @@ const seedStaff = db.prepare(`
 seedStaff.run(1, 'Parkwise Administrator', 'admin@parkwise.local', passwordHash(process.env.DEMO_ADMIN_PASSWORD || 'Parkwise!2026'), 'admin');
 seedStaff.run(2, 'Parking Floor Attendant', 'attendant@parkwise.local', passwordHash(process.env.DEMO_ATTENDANT_PASSWORD || 'Attendant!2026'), 'attendant');
 
-// Seed default operational inventory if empty
-const lotCount = db.prepare('SELECT COUNT(*) n FROM ParkingLots').get().n;
-if (!lotCount) {
-  // Loyalty Tiers
-  db.prepare("INSERT INTO LoyaltyTiers(tier_id, tier_name, min_points, discount_pct) VALUES (1, 'Standard', 0, 0), (2, 'Silver', 100, 5), (3, 'Gold', 250, 10), (4, 'Platinum', 500, 15)").run();
-  
-  // Parking Lots
-  const lot1 = db.prepare('INSERT INTO ParkingLots(name, location) VALUES (?, ?)').run('Central Plaza Mall', 'MG Road, Bengaluru');
-  const lot2 = db.prepare('INSERT INTO ParkingLots(name, location) VALUES (?, ?)').run('Tech Park Phase 1', 'Electronic City, Bengaluru');
-  
-  // Pricing Rules
-  db.prepare('INSERT INTO PricingRules(lot_id, slot_type, base_rate, peak_multiplier, start_hour, end_hour) VALUES (?, ?, ?, ?, ?, ?)').run(lot1.lastInsertRowid, 'Standard', 40.0, 1.25, 9, 21);
-  db.prepare('INSERT INTO PricingRules(lot_id, slot_type, base_rate, peak_multiplier, start_hour, end_hour) VALUES (?, ?, ?, ?, ?, ?)').run(lot1.lastInsertRowid, 'EV', 60.0, 1.10, 0, 23);
-  
-  // Zones
-  const z1 = db.prepare('INSERT INTO Zones(lot_id, level, zone_type) VALUES (?, ?, ?)').run(lot1.lastInsertRowid, 'Basement B1', 'Standard');
-  const z2 = db.prepare('INSERT INTO Zones(lot_id, level, zone_type) VALUES (?, ?, ?)').run(lot1.lastInsertRowid, 'Basement B2', 'EV Charging');
-  const z3 = db.prepare('INSERT INTO Zones(lot_id, level, zone_type) VALUES (?, ?, ?)').run(lot2.lastInsertRowid, 'Level 1', 'Standard');
+// ----------------------------------------------------------------------------
+// 3. SEED ALL 13 ER DIAGRAM ENTITIES WITH REALISTIC DATA
+// ----------------------------------------------------------------------------
+function seedEntityData() {
+  // 1. Loyalty Tiers
+  const tierCount = db.prepare('SELECT COUNT(*) n FROM LoyaltyTiers').get().n;
+  if (tierCount < 4) {
+    db.prepare("INSERT OR IGNORE INTO LoyaltyTiers(tier_id, tier_name, min_points, discount_pct) VALUES (1, 'Standard', 0, 0)").run();
+    db.prepare("INSERT OR IGNORE INTO LoyaltyTiers(tier_id, tier_name, min_points, discount_pct) VALUES (2, 'Silver', 100, 5)").run();
+    db.prepare("INSERT OR IGNORE INTO LoyaltyTiers(tier_id, tier_name, min_points, discount_pct) VALUES (3, 'Gold', 250, 10)").run();
+    db.prepare("INSERT OR IGNORE INTO LoyaltyTiers(tier_id, tier_name, min_points, discount_pct) VALUES (4, 'Platinum', 500, 15)").run();
+  }
 
-  // Slots
-  const addSlot = db.prepare('INSERT INTO Slots(zone_id, slot_type, status) VALUES (?, ?, ?)');
-  for (let i = 1; i <= 6; i++) addSlot.run(z1.lastInsertRowid, 'Standard', i === 2 ? 'occupied' : 'available');
-  for (let i = 1; i <= 4; i++) addSlot.run(z2.lastInsertRowid, 'EV', i === 1 ? 'occupied' : 'available');
-  for (let i = 1; i <= 6; i++) addSlot.run(z3.lastInsertRowid, 'Standard', 'available');
+  // 2. Parking Lots
+  let lot1Id = 1;
+  const lotsInDb = db.prepare('SELECT lot_id FROM ParkingLots LIMIT 1').get();
+  if (!lotsInDb) {
+    const l1 = db.prepare('INSERT INTO ParkingLots(name, location) VALUES (?, ?)').run('Central Plaza Mall', 'MG Road, Bengaluru');
+    lot1Id = Number(l1.lastInsertRowid);
+    db.prepare('INSERT INTO ParkingLots(name, location) VALUES (?, ?)').run('Tech Park Phase 1', 'Electronic City, Bengaluru');
+    db.prepare('INSERT INTO ParkingLots(name, location) VALUES (?, ?)').run('Airport Express Terminal', 'Devanahalli, Bengaluru');
+  } else {
+    lot1Id = Number(lotsInDb.lot_id);
+  }
 
-  // Users & Vehicles
-  const u1 = db.prepare('INSERT INTO Users(name, phone, email, tier_id) VALUES (?, ?, ?, ?)').run('Aarav Sharma', '+91 98765 43210', 'aarav.sharma@example.com', 4);
-  const u2 = db.prepare('INSERT INTO Users(name, phone, email, tier_id) VALUES (?, ?, ?, ?)').run('Diya Patel', '+91 98234 56789', 'diya.patel@example.com', 3);
-  const u3 = db.prepare('INSERT INTO Users(name, phone, email, tier_id) VALUES (?, ?, ?, ?)').run('Rohan Iyer', '+91 98450 12345', 'rohan.iyer@example.com', 2);
+  // 3. Pricing Rules
+  const ruleCount = db.prepare('SELECT COUNT(*) n FROM PricingRules').get().n;
+  if (ruleCount === 0) {
+    db.prepare('INSERT INTO PricingRules(lot_id, slot_type, base_rate, peak_multiplier, start_hour, end_hour) VALUES (?, ?, ?, ?, ?, ?)').run(lot1Id, 'Standard', 40.0, 1.25, 9, 21);
+    db.prepare('INSERT INTO PricingRules(lot_id, slot_type, base_rate, peak_multiplier, start_hour, end_hour) VALUES (?, ?, ?, ?, ?, ?)').run(lot1Id, 'EV', 60.0, 1.10, 0, 23);
+    db.prepare('INSERT INTO PricingRules(lot_id, slot_type, base_rate, peak_multiplier, start_hour, end_hour) VALUES (?, ?, ?, ?, ?, ?)').run(lot1Id, 'Accessible', 30.0, 1.00, 0, 23);
+  }
 
-  const v1 = db.prepare('INSERT INTO Vehicles(user_id, plate_no, type) VALUES (?, ?, ?)').run(u1.lastInsertRowid, 'KA-01-MJ-5001', 'Car');
-  const v2 = db.prepare('INSERT INTO Vehicles(user_id, plate_no, type) VALUES (?, ?, ?)').run(u1.lastInsertRowid, 'KA-01-EV-2024', 'EV');
-  const v3 = db.prepare('INSERT INTO Vehicles(user_id, plate_no, type) VALUES (?, ?, ?)').run(u2.lastInsertRowid, 'KA-03-AB-1234', 'SUV');
-  const v4 = db.prepare('INSERT INTO Vehicles(user_id, plate_no, type) VALUES (?, ?, ?)').run(u3.lastInsertRowid, 'KA-05-XY-9876', 'Car');
+  // 4. Zones & Slots
+  const zoneCount = db.prepare('SELECT COUNT(*) n FROM Zones').get().n;
+  let z1Id = 1;
+  if (zoneCount === 0) {
+    const z1 = db.prepare('INSERT INTO Zones(lot_id, level, zone_type) VALUES (?, ?, ?)').run(lot1Id, 'Basement B1', 'Standard');
+    z1Id = Number(z1.lastInsertRowid);
+    const z2 = db.prepare('INSERT INTO Zones(lot_id, level, zone_type) VALUES (?, ?, ?)').run(lot1Id, 'Basement B2', 'EV Charging');
+    const z3 = db.prepare('INSERT INTO Zones(lot_id, level, zone_type) VALUES (?, ?, ?)').run(lot1Id, 'Ground Floor', 'VIP & Accessible');
 
-  // Completed Session & Payment
-  const now = new Date();
-  const past2h = new Date(Date.now() - 7200000).toISOString();
-  const past1h = new Date(Date.now() - 3600000).toISOString();
-  const s1 = db.prepare('INSERT INTO ParkingSessions(vehicle_id, slot_id, entry_time, exit_time) VALUES (?, ?, ?, ?)').run(v4.lastInsertRowid, 1, past2h, past1h);
-  db.prepare('INSERT INTO Payments(session_id, amount, method, paid_at) VALUES (?, ?, ?, ?)').run(s1.lastInsertRowid, 80.0, 'UPI', past1h);
+    const addSlot = db.prepare('INSERT INTO Slots(zone_id, slot_type, status) VALUES (?, ?, ?)');
+    for (let i = 1; i <= 6; i++) addSlot.run(z1Id, 'Standard', i === 2 ? 'occupied' : 'available');
+    for (let i = 1; i <= 4; i++) addSlot.run(z2.lastInsertRowid, 'EV', i === 1 ? 'occupied' : 'available');
+    addSlot.run(z3.lastInsertRowid, 'Accessible', 'available');
+    addSlot.run(z3.lastInsertRowid, 'VIP', 'available');
+  }
 
-  // Active Sessions
-  const s2 = db.prepare('INSERT INTO ParkingSessions(vehicle_id, slot_id, entry_time) VALUES (?, ?, ?)').run(v1.lastInsertRowid, 2, past1h);
-  const s3 = db.prepare('INSERT INTO ParkingSessions(vehicle_id, slot_id, entry_time) VALUES (?, ?, ?)').run(v2.lastInsertRowid, 7, new Date(Date.now() - 1800000).toISOString());
+  // 5. Users
+  const userCount = db.prepare('SELECT COUNT(*) n FROM Users').get().n;
+  let u1Id = 1, u2Id = 2, u3Id = 3;
+  if (userCount === 0) {
+    const u1 = db.prepare('INSERT INTO Users(name, phone, email, tier_id) VALUES (?, ?, ?, ?)').run('Aarav Sharma', '+91 98765 43210', 'aarav.sharma@example.com', 4);
+    const u2 = db.prepare('INSERT INTO Users(name, phone, email, tier_id) VALUES (?, ?, ?, ?)').run('Diya Patel', '+91 98234 56789', 'diya.patel@example.com', 3);
+    const u3 = db.prepare('INSERT INTO Users(name, phone, email, tier_id) VALUES (?, ?, ?, ?)').run('Rohan Iyer', '+91 98450 12345', 'rohan.iyer@example.com', 2);
+    db.prepare('INSERT INTO Users(name, phone, email, tier_id) VALUES (?, ?, ?, ?)').run('Ananya Rao', '+91 98111 22334', 'ananya.rao@example.com', 1);
+    db.prepare('INSERT INTO Users(name, phone, email, tier_id) VALUES (?, ?, ?, ?)').run('Vikram Malhotra', '+91 98999 88776', 'vikram.m@example.com', 1);
+    u1Id = Number(u1.lastInsertRowid);
+    u2Id = Number(u2.lastInsertRowid);
+    u3Id = Number(u3.lastInsertRowid);
+  }
 
-  // Future Reservation
-  db.prepare('INSERT INTO Reservations(user_id, vehicle_id, slot_id, start_time, end_time, status) VALUES (?, ?, ?, ?, ?, ?)').run(
-    u2.lastInsertRowid,
-    v3.lastInsertRowid,
-    3,
-    new Date(Date.now() + 3600000).toISOString(),
-    new Date(Date.now() + 10800000).toISOString(),
-    'confirmed'
-  );
-  db.prepare("UPDATE Slots SET status = 'reserved' WHERE slot_id = 3").run();
+  // 6. Vehicles
+  const vehicleCount = db.prepare('SELECT COUNT(*) n FROM Vehicles').get().n;
+  let v1Id = 1, v2Id = 2, v3Id = 3, v4Id = 4;
+  if (vehicleCount === 0) {
+    const v1 = db.prepare('INSERT INTO Vehicles(user_id, plate_no, type) VALUES (?, ?, ?)').run(u1Id, 'KA-01-MJ-5001', 'Car');
+    const v2 = db.prepare('INSERT INTO Vehicles(user_id, plate_no, type) VALUES (?, ?, ?)').run(u1Id, 'KA-01-EV-2024', 'EV');
+    const v3 = db.prepare('INSERT INTO Vehicles(user_id, plate_no, type) VALUES (?, ?, ?)').run(u2Id, 'KA-03-AB-1234', 'SUV');
+    const v4 = db.prepare('INSERT INTO Vehicles(user_id, plate_no, type) VALUES (?, ?, ?)').run(u3Id, 'KA-05-XY-9876', 'Car');
+    db.prepare('INSERT INTO Vehicles(user_id, plate_no, type) VALUES (?, ?, ?)').run(u2Id, 'KA-04-MB-4411', 'Motorcycle');
+    db.prepare('INSERT INTO Vehicles(user_id, plate_no, type) VALUES (?, ?, ?)').run(u3Id, 'KA-02-ZZ-7788', 'Car');
+    v1Id = Number(v1.lastInsertRowid);
+    v2Id = Number(v2.lastInsertRowid);
+    v3Id = Number(v3.lastInsertRowid);
+    v4Id = Number(v4.lastInsertRowid);
+  }
+
+  // 7. Sessions & Payments
+  const sessionCount = db.prepare('SELECT COUNT(*) n FROM ParkingSessions').get().n;
+  let s1Id = 1, s2Id = 2, s3Id = 3;
+  if (sessionCount === 0) {
+    const past3h = new Date(Date.now() - 10800000).toISOString();
+    const past1h = new Date(Date.now() - 3600000).toISOString();
+    const past45m = new Date(Date.now() - 2700000).toISOString();
+    const past90m = new Date(Date.now() - 5400000).toISOString();
+
+    const s1 = db.prepare('INSERT INTO ParkingSessions(vehicle_id, slot_id, entry_time, exit_time) VALUES (?, ?, ?, ?)').run(v4Id, 1, past3h, past1h);
+    s1Id = Number(s1.lastInsertRowid);
+    db.prepare('INSERT INTO Payments(session_id, amount, method, paid_at) VALUES (?, ?, ?, ?)').run(s1Id, 80.0, 'UPI', past1h);
+
+    const s2 = db.prepare('INSERT INTO ParkingSessions(vehicle_id, slot_id, entry_time) VALUES (?, ?, ?)').run(v1Id, 2, past45m);
+    s2Id = Number(s2.lastInsertRowid);
+    db.prepare("UPDATE Slots SET status = 'occupied' WHERE slot_id = 2").run();
+
+    const s3 = db.prepare('INSERT INTO ParkingSessions(vehicle_id, slot_id, entry_time) VALUES (?, ?, ?)').run(v2Id, 7, past90m);
+    s3Id = Number(s3.lastInsertRowid);
+    db.prepare("UPDATE Slots SET status = 'occupied' WHERE slot_id = 7").run();
+  }
+
+  // 8. Reservations
+  const resCount = db.prepare('SELECT COUNT(*) n FROM Reservations').get().n;
+  if (resCount === 0) {
+    db.prepare('INSERT INTO Reservations(user_id, vehicle_id, slot_id, start_time, end_time, status) VALUES (?, ?, ?, ?, ?, ?)').run(
+      u2Id,
+      v3Id,
+      3,
+      new Date(Date.now() + 3600000).toISOString(),
+      new Date(Date.now() + 10800000).toISOString(),
+      'confirmed'
+    );
+    db.prepare("UPDATE Slots SET status = 'reserved' WHERE slot_id = 3").run();
+  }
+
+  // 9. Violations
+  const violationCount = db.prepare('SELECT COUNT(*) n FROM Violations').get().n;
+  if (violationCount === 0) {
+    const anySession = db.prepare('SELECT session_id FROM ParkingSessions LIMIT 1').get();
+    if (anySession) {
+      db.prepare('INSERT INTO Violations(session_id, type, fine_amount) VALUES (?, ?, ?)').run(
+        anySession.session_id,
+        'Overstaying allotted reservation duration',
+        250.0
+      );
+      db.prepare('INSERT INTO Violations(session_id, type, fine_amount) VALUES (?, ?, ?)').run(
+        anySession.session_id,
+        'Improper parking across lane boundary',
+        100.0
+      );
+    }
+  }
+
+  // 10. Charging Sessions (EV)
+  const chargeCount = db.prepare('SELECT COUNT(*) n FROM ChargingSessions').get().n;
+  if (chargeCount === 0) {
+    const evSession = db.prepare('SELECT session_id FROM ParkingSessions ORDER BY session_id DESC LIMIT 1').get();
+    if (evSession) {
+      db.prepare('INSERT INTO ChargingSessions(session_id, kwh_used, cost) VALUES (?, ?, ?)').run(
+        evSession.session_id,
+        18.450,
+        276.75
+      );
+    }
+  }
+
+  // 11. Sensor Logs (IoT)
+  const sensorCount = db.prepare('SELECT COUNT(*) n FROM SensorLogs').get().n;
+  if (sensorCount === 0) {
+    const addSensor = db.prepare('INSERT INTO SensorLogs(slot_id, reading, logged_at) VALUES (?, ?, ?)');
+    addSensor.run(1, 0.00, new Date(Date.now() - 600000).toISOString());
+    addSensor.run(2, 1.00, new Date(Date.now() - 300000).toISOString());
+    addSensor.run(3, 0.00, new Date(Date.now() - 180000).toISOString());
+    addSensor.run(7, 1.00, new Date(Date.now() - 120000).toISOString());
+  }
 }
 
+seedEntityData();
+
 // ----------------------------------------------------------------------------
-// 3. VECTOR EMBEDDINGS & SEMANTIC SEARCH ENGINE
+// 4. VECTOR EMBEDDINGS & SEMANTIC SEARCH ENGINE
 // ----------------------------------------------------------------------------
 const VOCABULARY = [
   'charger', 'ev', 'broken', 'maintenance', 'barrier', 'gate', 'ticket',
@@ -345,10 +446,9 @@ function cosineSimilarity(vecA, vecB) {
 }
 
 // ----------------------------------------------------------------------------
-// 4. DUAL NOSQL STORAGE LAYER (MongoDB Live + Embedded Fallback)
+// 5. DUAL NOSQL STORAGE LAYER (MongoDB Live + Embedded Fallback)
 // ----------------------------------------------------------------------------
 let mongoClient = null;
-let mongoHealthy = false;
 
 async function getMongoCollection() {
   if (!process.env.MONGODB_URI || !MongoClient) return null;
@@ -358,15 +458,12 @@ async function getMongoCollection() {
       await mongoClient.connect();
     }
     const db = mongoClient.db(process.env.MONGODB_DATABASE || 'parkwise');
-    mongoHealthy = true;
     return db.collection('parking_notes');
-  } catch (err) {
-    mongoHealthy = false;
+  } catch {
     return null;
   }
 }
 
-// Embedded NoSQL Document store methods (Guaranteed 100% uptime for evaluation)
 const embeddedNoSQL = {
   async find(filter = {}) {
     let sql = 'SELECT * FROM _nosql_parking_notes';
@@ -450,7 +547,7 @@ const embeddedNoSQL = {
   }
 };
 
-// Seed initial NoSQL documents into embedded store if empty
+// Seed initial NoSQL notes if empty
 (async () => {
   const count = db.prepare('SELECT COUNT(*) n FROM _nosql_parking_notes').get().n;
   if (!count) {
@@ -493,7 +590,7 @@ const embeddedNoSQL = {
 })();
 
 // ----------------------------------------------------------------------------
-// 5. HTTP HELPERS & RBAC MIDDLEWARE
+// 6. HTTP HELPERS & RBAC MIDDLEWARE
 // ----------------------------------------------------------------------------
 function send(res, status, data, type = 'application/json; charset=utf-8') {
   res.writeHead(status, {
@@ -554,13 +651,13 @@ function getCurrentStaff(req) {
 }
 
 // ----------------------------------------------------------------------------
-// 6. REST API ROUTER
+// 7. REST API ROUTER
 // ----------------------------------------------------------------------------
 async function handleApi(req, res, url) {
   if (req.method === 'OPTIONS') return send(res, 204, '');
 
   // --------------------------------------------------------------------------
-  // Public / Auth Endpoints
+  // Public / Authentication Endpoints
   // --------------------------------------------------------------------------
   if (req.method === 'POST' && url.pathname === '/api/login') {
     try {
@@ -576,37 +673,6 @@ async function handleApi(req, res, url) {
       if (!account || !verifyPassword(String(data.password || ''), account.password_hash)) {
         return send(res, 401, { error: 'Invalid email address or password' });
       }
-
-      const token = crypto.randomBytes(32).toString('base64url');
-      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-      db.prepare(`
-        INSERT INTO AuthSessions (token_hash, staff_id, expires_at)
-        VALUES (?, ?, datetime('now', '+12 hours'))
-      `).run(tokenHash, account.staff_id);
-
-      res.setHeader('Set-Cookie', `parkwise_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200`);
-      return send(res, 200, {
-        staff: { staff_id: account.staff_id, name: account.name, email: account.email, role: account.role }
-      });
-    } catch (err) {
-      return send(res, 400, { error: err.message });
-    }
-  }
-
-  // Quick Role Switcher for seamless viva/evaluator demonstration
-  if (req.method === 'POST' && url.pathname === '/api/switch-demo-role') {
-    try {
-      const data = await parseBody(req);
-      const targetRole = data.role === 'attendant' ? 'attendant' : 'admin';
-      const account = db.prepare(`
-        SELECT a.*, r.role_name AS role 
-        FROM StaffAccounts a 
-        JOIN Roles r USING(role_id) 
-        WHERE r.role_name = ?
-        LIMIT 1
-      `).get(targetRole);
-
-      if (!account) return send(res, 404, { error: 'Role account not found' });
 
       const token = crypto.randomBytes(32).toString('base64url');
       const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
@@ -661,11 +727,11 @@ async function handleApi(req, res, url) {
   const staff = getCurrentStaff(req);
   if (!staff) return send(res, 401, { error: 'Authentication required to access this endpoint.' });
 
-  // Role Permissions: Attendants can create reservations, check-in, check-out, and create notes.
-  // Structural modifications (Lots, Zones, Slots, Users, Vehicles, and deleting Notes) require Admin role.
-  const attendantAllowedWrites = ['/api/reservations', '/api/check-in', '/api/check-out', '/api/notes', '/api/notes/vector-search'];
+  // Role Permissions: Attendants can create reservations, check-in, check-out, record payments, and create notes.
+  // Structural changes (Lots, Zones, Slots, Pricing, Customers, Deleting Notes) require Admin role.
+  const attendantAllowedWrites = ['/api/reservations', '/api/check-in', '/api/check-out', '/api/notes', '/api/notes/vector-search', '/api/sensor-logs'];
   if (req.method !== 'GET' && staff.role !== 'admin' && !attendantAllowedWrites.includes(url.pathname)) {
-    return send(res, 403, { error: `Permission Denied: '${staff.role}' cannot perform administrative writes on ${url.pathname}` });
+    return send(res, 403, { error: `Permission Denied: Role '${staff.role}' cannot perform administrative writes on ${url.pathname}` });
   }
 
   // --------------------------------------------------------------------------
@@ -680,17 +746,36 @@ async function handleApi(req, res, url) {
       reserved: q("SELECT COUNT(*) n FROM Slots WHERE status = 'reserved'"),
       active: q('SELECT COUNT(*) n FROM ParkingSessions WHERE exit_time IS NULL'),
       revenue: db.prepare('SELECT COALESCE(SUM(amount), 0) n FROM Payments').get().n,
-      capacity: db.prepare('SELECT COALESCE(SUM(total_capacity), 0) n FROM ParkingLotCapacity').get().n
+      capacity: db.prepare('SELECT COALESCE(SUM(total_capacity), 0) n FROM ParkingLotCapacity').get().n,
+      violations: q('SELECT COUNT(*) n FROM Violations'),
+      ev_charging: q('SELECT COUNT(*) n FROM ChargingSessions')
     });
   }
 
+  // Complete data return covering ALL 13 ER DIAGRAM ENTITIES
   if (req.method === 'GET' && url.pathname === '/api/data') {
     return send(res, 200, {
+      // 1. ParkingLots (Capacity view with derived total_capacity)
       lots: db.prepare('SELECT * FROM ParkingLotCapacity ORDER BY name').all(),
+      // 2. Zones
       zones: db.prepare('SELECT z.*, p.name AS lot_name FROM Zones z JOIN ParkingLots p USING(lot_id) ORDER BY p.name, z.level').all(),
+      // 3. Slots
       slots: db.prepare('SELECT s.*, z.lot_id, z.level, p.name AS lot_name FROM Slots s JOIN Zones z USING(zone_id) JOIN ParkingLots p USING(lot_id) ORDER BY p.name, z.level, s.slot_id').all(),
-      users: db.prepare('SELECT u.*, lt.tier_name, lt.discount_pct FROM Users u LEFT JOIN LoyaltyTiers lt USING(tier_id) ORDER BY u.user_id').all(),
+      // 4. LoyaltyTiers
+      loyalty_tiers: db.prepare('SELECT * FROM LoyaltyTiers ORDER BY min_points ASC').all(),
+      // 5. Users (with derived loyalty points)
+      users: db.prepare(`
+        SELECT u.*, lt.tier_name, lt.discount_pct,
+               COALESCE((SELECT COUNT(*) FROM ParkingSessions ps JOIN Vehicles v USING(vehicle_id) WHERE v.user_id = u.user_id) * 25, 0) AS loyalty_points
+        FROM Users u
+        LEFT JOIN LoyaltyTiers lt USING(tier_id)
+        ORDER BY u.user_id
+      `).all(),
+      // 6. Vehicles
       vehicles: db.prepare('SELECT v.*, u.name AS owner FROM Vehicles v JOIN Users u USING(user_id) ORDER BY v.plate_no').all(),
+      // 7. PricingRules
+      pricing_rules: db.prepare('SELECT pr.*, p.name AS lot_name FROM PricingRules pr JOIN ParkingLots p USING(lot_id) ORDER BY p.name, pr.slot_type').all(),
+      // 8. Reservations
       reservations: db.prepare(`
         SELECT r.*, u.name AS user_name, v.plate_no, s.slot_id, p.name AS lot_name, z.level
         FROM Reservations r
@@ -701,6 +786,7 @@ async function handleApi(req, res, url) {
         JOIN ParkingLots p USING(lot_id)
         ORDER BY r.res_id DESC LIMIT 40
       `).all(),
+      // 9. ParkingSessions
       sessions: db.prepare(`
         SELECT ps.*, v.plate_no, v.type AS vehicle_type, s.slot_id, p.name AS lot_name, z.level,
                COALESCE(pay.amount, 0) AS payment_amount, pay.method AS payment_method
@@ -711,12 +797,55 @@ async function handleApi(req, res, url) {
         JOIN ParkingLots p USING(lot_id)
         LEFT JOIN Payments pay USING(session_id)
         ORDER BY ps.session_id DESC LIMIT 40
+      `).all(),
+      // 10. Payments
+      payments: db.prepare(`
+        SELECT pay.*, ps.vehicle_id, v.plate_no, s.slot_id, p.name AS lot_name
+        FROM Payments pay
+        JOIN ParkingSessions ps USING(session_id)
+        JOIN Vehicles v USING(vehicle_id)
+        JOIN Slots s USING(slot_id)
+        JOIN Zones z USING(zone_id)
+        JOIN ParkingLots p USING(lot_id)
+        ORDER BY pay.paid_at DESC LIMIT 40
+      `).all(),
+      // 11. Violations
+      violations: db.prepare(`
+        SELECT vio.*, v.plate_no, u.name AS customer_name, s.slot_id, p.name AS lot_name
+        FROM Violations vio
+        JOIN ParkingSessions ps USING(session_id)
+        JOIN Vehicles v USING(vehicle_id)
+        JOIN Users u USING(user_id)
+        JOIN Slots s USING(slot_id)
+        JOIN Zones z USING(zone_id)
+        JOIN ParkingLots p USING(lot_id)
+        ORDER BY vio.violation_id DESC LIMIT 40
+      `).all(),
+      // 12. ChargingSessions (EV)
+      charging_sessions: db.prepare(`
+        SELECT cs.*, v.plate_no, s.slot_id, p.name AS lot_name
+        FROM ChargingSessions cs
+        JOIN ParkingSessions ps USING(session_id)
+        JOIN Vehicles v USING(vehicle_id)
+        JOIN Slots s USING(slot_id)
+        JOIN Zones z USING(zone_id)
+        JOIN ParkingLots p USING(lot_id)
+        ORDER BY cs.charge_id DESC LIMIT 40
+      `).all(),
+      // 13. SensorLogs (IoT Telemetry)
+      sensor_logs: db.prepare(`
+        SELECT sl.*, s.slot_type, s.status AS slot_status, z.level, p.name AS lot_name
+        FROM SensorLogs sl
+        JOIN Slots s USING(slot_id)
+        JOIN Zones z USING(zone_id)
+        JOIN ParkingLots p USING(lot_id)
+        ORDER BY sl.logged_at DESC LIMIT 40
       `).all()
     });
   }
 
   // --------------------------------------------------------------------------
-  // Component 4 & 9: NoSQL & Vector Feature RUD Endpoints
+  // NoSQL Document Store & Vector Similarity Endpoints
   // --------------------------------------------------------------------------
   if (url.pathname === '/api/notes' && req.method === 'GET') {
     try {
@@ -748,7 +877,6 @@ async function handleApi(req, res, url) {
     }
   }
 
-  // Vector Semantic Similarity Search across Operational Notes
   if (url.pathname === '/api/notes/vector-search' && req.method === 'POST') {
     try {
       const data = await parseBody(req);
@@ -765,7 +893,6 @@ async function handleApi(req, res, url) {
         allNotes = await embeddedNoSQL.find({});
       }
 
-      // Rank notes by Cosine Similarity
       const scoredNotes = allNotes.map(n => {
         const noteVec = n.vector && n.vector.length ? n.vector : computeTextVector(`${n.title} ${n.note} ${(n.tags || []).join(' ')}`);
         const sim = cosineSimilarity(queryVector, noteVec);
@@ -886,7 +1013,7 @@ async function handleApi(req, res, url) {
   }
 
   // --------------------------------------------------------------------------
-  // Interactive SQL Query Console Endpoint for Demonstration & Viva
+  // Live SQL Query Console Endpoint
   // --------------------------------------------------------------------------
   if (url.pathname === '/api/sql-queries/run' && req.method === 'POST') {
     try {
@@ -1056,6 +1183,53 @@ async function handleApi(req, res, url) {
           );
           return send(res, 201, { ok: true, message: 'Vehicle registered successfully' });
         }
+        case '/api/pricing-rules': {
+          requireFields(data, ['lot_id', 'slot_type', 'base_rate']);
+          db.prepare(`
+            INSERT INTO PricingRules (lot_id, slot_type, base_rate, peak_multiplier, start_hour, end_hour)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `).run(
+            Number(data.lot_id),
+            data.slot_type.trim(),
+            Number(data.base_rate),
+            data.peak_multiplier ? Number(data.peak_multiplier) : 1.0,
+            data.start_hour !== undefined ? Number(data.start_hour) : 0,
+            data.end_hour !== undefined ? Number(data.end_hour) : 23
+          );
+          return send(res, 201, { ok: true, message: 'Pricing rule created successfully' });
+        }
+        case '/api/violations': {
+          requireFields(data, ['session_id', 'type', 'fine_amount']);
+          db.prepare(`
+            INSERT INTO Violations (session_id, type, fine_amount)
+            VALUES (?, ?, ?)
+          `).run(Number(data.session_id), data.type.trim(), Number(data.fine_amount));
+          return send(res, 201, { ok: true, message: 'Violation logged successfully' });
+        }
+        case '/api/charging-sessions': {
+          requireFields(data, ['session_id', 'kwh_used', 'cost']);
+          db.prepare(`
+            INSERT INTO ChargingSessions (session_id, kwh_used, cost)
+            VALUES (?, ?, ?)
+          `).run(Number(data.session_id), Number(data.kwh_used), Number(data.cost));
+          return send(res, 201, { ok: true, message: 'EV Charging session logged successfully' });
+        }
+        case '/api/sensor-logs': {
+          requireFields(data, ['slot_id', 'reading']);
+          db.prepare(`
+            INSERT INTO SensorLogs (slot_id, reading, logged_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+          `).run(Number(data.slot_id), Number(data.reading));
+          return send(res, 201, { ok: true, message: 'Sensor log recorded' });
+        }
+        case '/api/loyalty-tiers': {
+          requireFields(data, ['tier_name', 'min_points', 'discount_pct']);
+          db.prepare(`
+            INSERT INTO LoyaltyTiers (tier_name, min_points, discount_pct)
+            VALUES (?, ?, ?)
+          `).run(data.tier_name.trim(), Number(data.min_points), Number(data.discount_pct));
+          return send(res, 201, { ok: true, message: 'Loyalty tier created successfully' });
+        }
         case '/api/reservations': {
           requireFields(data, ['user_id', 'vehicle_id', 'slot_id', 'start_time', 'end_time']);
           const start = new Date(data.start_time);
@@ -1145,7 +1319,7 @@ async function handleApi(req, res, url) {
 }
 
 // ----------------------------------------------------------------------------
-// 7. HTTP SERVER LISTENER WITH STATIC FILE FALLBACK
+// 8. HTTP SERVER LISTENER WITH STATIC ASSETS
 // ----------------------------------------------------------------------------
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);

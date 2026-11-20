@@ -2,7 +2,10 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 
-// Types
+// ============================================================================
+// TYPES MATCHING ALL 13 ER DIAGRAM ENTITIES + RBAC AUTH
+// ============================================================================
+
 interface Staff {
   staff_id?: number;
   name: string;
@@ -18,8 +21,40 @@ interface Summary {
   active: number;
   revenue: number;
   capacity: number;
+  violations: number;
+  ev_charging: number;
 }
 
+// 1. LoyaltyTiers
+interface LoyaltyTier {
+  tier_id: number;
+  tier_name: string;
+  min_points: number;
+  discount_pct: number;
+}
+
+// 2. Users (Customers) with derived loyalty_points
+interface User {
+  user_id: number;
+  name: string;
+  email: string;
+  phone?: string;
+  tier_id?: number;
+  tier_name?: string;
+  discount_pct?: number;
+  loyalty_points?: number;
+}
+
+// 3. Vehicles
+interface Vehicle {
+  vehicle_id: number;
+  user_id: number;
+  plate_no: string;
+  type: string;
+  owner?: string;
+}
+
+// 4. ParkingLots with derived total_capacity
 interface ParkingLot {
   lot_id: number;
   name: string;
@@ -30,6 +65,19 @@ interface ParkingLot {
   reserved_slots?: number;
 }
 
+// 5. PricingRules
+interface PricingRule {
+  rule_id: number;
+  lot_id: number;
+  slot_type: string;
+  base_rate: number;
+  peak_multiplier: number;
+  start_hour: number;
+  end_hour: number;
+  lot_name?: string;
+}
+
+// 6. Zones
 interface Zone {
   zone_id: number;
   lot_id: number;
@@ -38,6 +86,7 @@ interface Zone {
   lot_name?: string;
 }
 
+// 7. Slots
 interface Slot {
   slot_id: number;
   zone_id: number;
@@ -48,24 +97,7 @@ interface Slot {
   lot_name?: string;
 }
 
-interface User {
-  user_id: number;
-  name: string;
-  email: string;
-  phone?: string;
-  tier_id?: number;
-  tier_name?: string;
-  discount_pct?: number;
-}
-
-interface Vehicle {
-  vehicle_id: number;
-  user_id: number;
-  plate_no: string;
-  type: string;
-  owner?: string;
-}
-
+// 8. Reservations
 interface Reservation {
   res_id: number;
   user_id: number;
@@ -80,10 +112,12 @@ interface Reservation {
   level?: string;
 }
 
+// 9. ParkingSessions
 interface ParkingSession {
   session_id: number;
   vehicle_id: number;
   slot_id: number;
+  res_id?: number;
   entry_time: string;
   exit_time?: string;
   plate_no?: string;
@@ -94,6 +128,52 @@ interface ParkingSession {
   payment_method?: string;
 }
 
+// 10. Payments
+interface Payment {
+  payment_id: number;
+  session_id: number;
+  amount: number;
+  method: string;
+  paid_at: string;
+  plate_no?: string;
+  lot_name?: string;
+}
+
+// 11. Violations
+interface Violation {
+  violation_id: number;
+  session_id: number;
+  type: string;
+  fine_amount: number;
+  plate_no?: string;
+  customer_name?: string;
+  lot_name?: string;
+  slot_id?: number;
+}
+
+// 12. ChargingSessions (EV)
+interface ChargingSession {
+  charge_id: number;
+  session_id: number;
+  kwh_used: number;
+  cost: number;
+  plate_no?: string;
+  lot_name?: string;
+}
+
+// 13. SensorLogs (IoT Telemetry)
+interface SensorLog {
+  log_id: number;
+  slot_id: number;
+  reading: number;
+  logged_at: string;
+  slot_type?: string;
+  slot_status?: string;
+  level?: string;
+  lot_name?: string;
+}
+
+// NoSQL & Vector Notes
 interface Note {
   _id: string;
   title: string;
@@ -121,39 +201,47 @@ interface QueryResult {
 export default function Dashboard() {
   const [staff, setStaff] = useState<Staff | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'parking' | 'people' | 'reservations' | 'notes' | 'sql' | 'er_schema'>('overview');
-  
-  // Data States
+  const [activeTab, setActiveTab] = useState<
+    'overview' | 'parking' | 'people' | 'reservations' | 'pricing_ev' | 'violations_sensors' | 'payments' | 'notes' | 'sql' | 'er_schema'
+  >('overview');
+
+  // Relational Entities State (13 ER Entities)
   const [summary, setSummary] = useState<Summary | null>(null);
   const [lots, setLots] = useState<ParkingLot[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [loyaltyTiers, setLoyaltyTiers] = useState<LoyaltyTier[]>([]);
+  const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [sessions, setSessions] = useState<ParkingSession[]>([]);
-  
-  // NoSQL & Vector Notes States
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [violations, setViolations] = useState<Violation[]>([]);
+  const [chargingSessions, setChargingSessions] = useState<ChargingSession[]>([]);
+  const [sensorLogs, setSensorLogs] = useState<SensorLog[]>([]);
+
+  // NoSQL & Vector Notes State
   const [notes, setNotes] = useState<Note[]>([]);
   const [noteCategory, setNoteCategory] = useState<string>('all');
   const [vectorQuery, setVectorQuery] = useState('');
   const [isVectorSearch, setIsVectorSearch] = useState(false);
   const [storageEngine, setStorageEngine] = useState('Checking...');
 
-  // SQL Console States
+  // SQL Runner State
   const [selectedQueryId, setSelectedQueryId] = useState('join_5_tables');
   const [customSql, setCustomSql] = useState('');
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [queryRunning, setQueryRunning] = useState(false);
 
-  // Modals & Notifications
+  // Modals & UI States
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [modalData, setModalData] = useState<any>({});
   const [toast, setToast] = useState<{ message: string; isError?: boolean } | null>(null);
 
-  // Login form state
-  const [loginEmail, setLoginEmail] = useState('admin@parkwise.local');
-  const [loginPassword, setLoginPassword] = useState('Parkwise!2026');
+  // Auth form state
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
   const showToast = useCallback((message: string, isError = false) => {
@@ -161,22 +249,16 @@ export default function Dashboard() {
     setTimeout(() => setToast(null), 3500);
   }, []);
 
-  // API helper
   const apiCall = useCallback(async (endpoint: string, options: RequestInit = {}) => {
-    try {
-      const res = await fetch(endpoint, {
-        ...options,
-        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Server request failed');
-      return data;
-    } catch (err: any) {
-      throw err;
-    }
+    const res = await fetch(endpoint, {
+      ...options,
+      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Request failed');
+    return data;
   }, []);
 
-  // Fetch Current Staff Auth
   const fetchAuth = useCallback(async () => {
     try {
       const res = await apiCall('/api/me');
@@ -188,7 +270,6 @@ export default function Dashboard() {
     }
   }, [apiCall]);
 
-  // Fetch Dashboard & Inventory Data
   const fetchData = useCallback(async () => {
     try {
       const [sumRes, dataRes] = await Promise.all([
@@ -201,14 +282,19 @@ export default function Dashboard() {
       setSlots(dataRes.slots || []);
       setUsers(dataRes.users || []);
       setVehicles(dataRes.vehicles || []);
+      setLoyaltyTiers(dataRes.loyalty_tiers || []);
+      setPricingRules(dataRes.pricing_rules || []);
       setReservations(dataRes.reservations || []);
       setSessions(dataRes.sessions || []);
+      setPayments(dataRes.payments || []);
+      setViolations(dataRes.violations || []);
+      setChargingSessions(dataRes.charging_sessions || []);
+      setSensorLogs(dataRes.sensor_logs || []);
     } catch (err: any) {
       showToast(err.message, true);
     }
   }, [apiCall, showToast]);
 
-  // Fetch Operations Notes
   const fetchNotes = useCallback(async () => {
     try {
       if (isVectorSearch && vectorQuery.trim()) {
@@ -240,7 +326,6 @@ export default function Dashboard() {
     }
   }, [staff, fetchData, fetchNotes]);
 
-  // Handle Login Submit
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
@@ -250,28 +335,12 @@ export default function Dashboard() {
         body: JSON.stringify({ email: loginEmail, password: loginPassword }),
       });
       setStaff(res.staff);
-      showToast(`Welcome back, ${res.staff.name}`);
+      showToast(`Welcome, ${res.staff.name}`);
     } catch (err: any) {
       setLoginError(err.message);
     }
   };
 
-  // Quick Role Switcher for Demo
-  const switchDemoRole = async (targetRole: 'admin' | 'attendant') => {
-    try {
-      const res = await apiCall('/api/switch-demo-role', {
-        method: 'POST',
-        body: JSON.stringify({ role: targetRole }),
-      });
-      setStaff(res.staff);
-      showToast(`Switched active session to: ${res.staff.name} (${res.staff.role})`);
-      fetchData();
-    } catch (err: any) {
-      showToast(err.message, true);
-    }
-  };
-
-  // Sign out
   const handleLogout = async () => {
     try {
       await apiCall('/api/logout', { method: 'POST' });
@@ -282,7 +351,6 @@ export default function Dashboard() {
     }
   };
 
-  // Run SQL Query
   const runSqlQuery = async (queryId?: string) => {
     setQueryRunning(true);
     try {
@@ -308,7 +376,6 @@ export default function Dashboard() {
     }
   };
 
-  // Handle Form Submission in Modals
   const handleModalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -327,6 +394,18 @@ export default function Dashboard() {
       } else if (activeModal === 'vehicle') {
         await apiCall('/api/vehicles', { method: 'POST', body: JSON.stringify(modalData) });
         showToast('Vehicle registered successfully');
+      } else if (activeModal === 'pricing_rule') {
+        await apiCall('/api/pricing-rules', { method: 'POST', body: JSON.stringify(modalData) });
+        showToast('Pricing rule created successfully');
+      } else if (activeModal === 'violation') {
+        await apiCall('/api/violations', { method: 'POST', body: JSON.stringify(modalData) });
+        showToast('Parking violation fine logged');
+      } else if (activeModal === 'charging') {
+        await apiCall('/api/charging-sessions', { method: 'POST', body: JSON.stringify(modalData) });
+        showToast('EV charging session logged');
+      } else if (activeModal === 'sensor') {
+        await apiCall('/api/sensor-logs', { method: 'POST', body: JSON.stringify(modalData) });
+        showToast('IoT sensor reading logged');
       } else if (activeModal === 'reservation') {
         await apiCall('/api/reservations', { method: 'POST', body: JSON.stringify(modalData) });
         showToast('Reservation confirmed');
@@ -335,7 +414,7 @@ export default function Dashboard() {
         showToast('Vehicle checked in successfully');
       } else if (activeModal === 'checkout') {
         await apiCall('/api/check-out', { method: 'POST', body: JSON.stringify(modalData) });
-        showToast('Vehicle checked out & payment recorded');
+        showToast('Vehicle checked out & payment settled');
       } else if (activeModal === 'note') {
         await apiCall('/api/notes', { method: 'POST', body: JSON.stringify(modalData) });
         showToast('Note created with vector embeddings');
@@ -353,7 +432,6 @@ export default function Dashboard() {
     }
   };
 
-  // Delete note
   const handleDeleteNote = async (id: string) => {
     if (!confirm('Are you sure you want to delete this operations note?')) return;
     try {
@@ -376,7 +454,7 @@ export default function Dashboard() {
     );
   }
 
-  // If not authenticated, render Login Page
+  // Production-Ready Authentication View
   if (!staff) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '20px', background: '#090d13' }}>
@@ -387,12 +465,12 @@ export default function Dashboard() {
               <span className="brand-icon">P</span>
               <span>Parkwise</span>
             </div>
-            <p className="brand-sub">Smart Parking Management System · Aug-Dec 2026</p>
+            <p className="brand-sub">Smart Parking Management System · Production Portal</p>
           </div>
           <form onSubmit={handleLogin} style={{ padding: '28px' }}>
             <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>Staff Sign In</h2>
             <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', marginBottom: '20px' }}>
-              Sign in with your staff account to manage parking facilities and RBAC controls.
+              Enter your credentials to access system management and operational tools.
             </p>
 
             {loginError && (
@@ -407,6 +485,7 @@ export default function Dashboard() {
                 className="form-input"
                 type="email"
                 required
+                placeholder="admin@parkwise.local or attendant@parkwise.local"
                 value={loginEmail}
                 onChange={e => setLoginEmail(e.target.value)}
               />
@@ -418,6 +497,7 @@ export default function Dashboard() {
                 className="form-input"
                 type="password"
                 required
+                placeholder="••••••••••••"
                 value={loginPassword}
                 onChange={e => setLoginPassword(e.target.value)}
               />
@@ -428,7 +508,7 @@ export default function Dashboard() {
             </button>
 
             <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)', fontSize: '12px', color: 'var(--text-dim)' }}>
-              <strong>Demo Staff Credentials:</strong>
+              <strong>Staff Credentials:</strong>
               <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <div>• Administrator: <code>admin@parkwise.local</code> / <code>Parkwise!2026</code></div>
                 <div>• Floor Attendant: <code>attendant@parkwise.local</code> / <code>Attendant!2026</code></div>
@@ -442,14 +522,13 @@ export default function Dashboard() {
 
   return (
     <div className="app-container">
-      {/* Toast Notification */}
       {toast && (
         <div className={`toast-notice ${toast.isError ? 'error' : ''}`}>
           {toast.message}
         </div>
       )}
 
-      {/* Sidebar Navigation */}
+      {/* Production Sidebar Navigation */}
       <aside className="sidebar">
         <div className="brand-section">
           <span className="brand-badge">PES UNIVERSITY CSE DBMS</span>
@@ -457,10 +536,10 @@ export default function Dashboard() {
             <span className="brand-icon">P</span>
             <span>Parkwise</span>
           </div>
-          <div className="brand-sub">Experiential Learning Level 3</div>
+          <div className="brand-sub">Smart Parking Management System</div>
         </div>
 
-        <div className="nav-group-label">WORKSPACE</div>
+        <div className="nav-group-label">FACILITY OPERATIONS</div>
         <div className="nav-list">
           <button
             className={`nav-item ${activeTab === 'overview' ? 'active' : ''}`}
@@ -472,19 +551,41 @@ export default function Dashboard() {
             className={`nav-item ${activeTab === 'parking' ? 'active' : ''}`}
             onClick={() => setActiveTab('parking')}
           >
-            <span className="nav-icon">▦</span> Parking & Spaces
+            <span className="nav-icon">▦</span> Facilities & Bays
           </button>
           <button
             className={`nav-item ${activeTab === 'people' ? 'active' : ''}`}
             onClick={() => setActiveTab('people')}
           >
-            <span className="nav-icon">♙</span> People & Vehicles
+            <span className="nav-icon">♙</span> Customers & Loyalty
           </button>
           <button
             className={`nav-item ${activeTab === 'reservations' ? 'active' : ''}`}
             onClick={() => setActiveTab('reservations')}
           >
             <span className="nav-icon">◷</span> Reservations
+          </button>
+        </div>
+
+        <div className="nav-group-label" style={{ marginTop: '12px' }}>SERVICES & TELEMETRY</div>
+        <div className="nav-list">
+          <button
+            className={`nav-item ${activeTab === 'pricing_ev' ? 'active' : ''}`}
+            onClick={() => setActiveTab('pricing_ev')}
+          >
+            <span className="nav-icon">⚡</span> Tariffs & EV Charging
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'violations_sensors' ? 'active' : ''}`}
+            onClick={() => setActiveTab('violations_sensors')}
+          >
+            <span className="nav-icon">⚠️</span> Violations & Sensors
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'payments' ? 'active' : ''}`}
+            onClick={() => setActiveTab('payments')}
+          >
+            <span className="nav-icon">💳</span> Financials & Payments
           </button>
           <button
             className={`nav-item ${activeTab === 'notes' ? 'active' : ''}`}
@@ -522,19 +623,22 @@ export default function Dashboard() {
 
       {/* Main Workspace Area */}
       <div className="main-wrapper">
-        {/* Top Header Bar */}
+        {/* Production Topbar without artificial switch buttons */}
         <header className="topbar">
           <div className="page-heading">
             <h1>
-              {activeTab === 'overview' && 'System Overview & Live Operations'}
+              {activeTab === 'overview' && 'System Overview & Operational Health'}
               {activeTab === 'parking' && 'Facilities, Zones & Parking Spaces'}
-              {activeTab === 'people' && 'Customer Directory & Registered Vehicles'}
+              {activeTab === 'people' && 'Customers, Loyalty Tiers & Registered Vehicles'}
               {activeTab === 'reservations' && 'Pre-Booked Space Reservations'}
-              {activeTab === 'notes' && 'NoSQL Document Store & Vector Search (RUD)'}
+              {activeTab === 'pricing_ev' && 'Pricing Rules & EV Charging Sessions'}
+              {activeTab === 'violations_sensors' && 'Infractions, Fines & IoT Sensor Logs'}
+              {activeTab === 'payments' && 'Payment Transactions & Revenue Ledger'}
+              {activeTab === 'notes' && 'Operations Handover & Vector Semantic Search'}
               {activeTab === 'sql' && 'Live SQL Queries, CTEs & Procedure Runner'}
-              {activeTab === 'er_schema' && 'Chen ER Diagram & Normalized Relational Schema'}
+              {activeTab === 'er_schema' && 'Chen ER Diagram & 3NF/BCNF Schema Specifications'}
             </h1>
-            <p>Smart Parking Relational, Document & Vector DBMS Engine</p>
+            <p>Department of Computer Science & Engineering · Aug - Dec 2026</p>
           </div>
 
           <div className="topbar-right">
@@ -542,15 +646,6 @@ export default function Dashboard() {
               <span>{staff.name}</span>
               <span className={`role-tag ${staff.role}`}>{staff.role}</span>
             </div>
-
-            {/* Quick Role Switcher for Viva Evaluation */}
-            <button
-              className="btn btn-sm btn-switch"
-              title="Quickly switch role to test Role-Based Access Control"
-              onClick={() => switchDemoRole(staff.role === 'admin' ? 'attendant' : 'admin')}
-            >
-              Switch to {staff.role === 'admin' ? 'Attendant' : 'Admin'}
-            </button>
 
             <button className="btn btn-outline btn-sm" onClick={fetchData} title="Refresh live database state">
               ↻ Refresh
@@ -562,22 +657,17 @@ export default function Dashboard() {
           </div>
         </header>
 
-        {/* Content Body */}
         <main className="content-body">
           {/* TAB 1: OVERVIEW */}
           {activeTab === 'overview' && (
             <div>
-              {/* Rubric Info Banner */}
               <div className="rubric-banner">
                 <div className="rubric-info">
-                  <span className="rubric-tag">RUBRIC CRITERIA 1-14</span>
+                  <span className="rubric-tag">ALL 13 ER ENTITIES IMPLEMENTED</span>
                   <div className="rubric-text">
-                    <strong>Smart Parking Management System:</strong> Complete integration of relational DDL, DML, advanced SQL (joins, correlated subqueries, recursive CTEs), NoSQL document RUD, Vector similarity search, and role-based access control.
+                    <strong>Complete System Verification:</strong> All 13 entities from <code>smart_parking_chen_er.drawio</code> (Lots, Zones, Slots, Users, Vehicles, Loyalty Tiers, Pricing Rules, Reservations, Sessions, Payments, Violations, EV Charging, Sensor Logs) are populated in the database and manageable through the interface.
                   </div>
                 </div>
-                <button className="btn btn-primary btn-sm" onClick={() => setActiveTab('sql')}>
-                  Open SQL Console →
-                </button>
               </div>
 
               {/* KPI Metrics */}
@@ -588,7 +678,7 @@ export default function Dashboard() {
                     <span className="kpi-icon blue">▦</span>
                   </div>
                   <div className="kpi-val">{summary?.capacity ?? '—'}</div>
-                  <div className="kpi-sub">Across all {summary?.lots ?? '0'} parking facilities</div>
+                  <div className="kpi-sub">Across {summary?.lots ?? '0'} parking facilities</div>
                 </div>
 
                 <div className="kpi-card">
@@ -606,7 +696,7 @@ export default function Dashboard() {
                     <span className="kpi-icon orange">↗</span>
                   </div>
                   <div className="kpi-val" style={{ color: '#fbbf24' }}>{summary?.active ?? '—'}</div>
-                  <div className="kpi-sub">{summary?.occupied ?? 0} slots occupied · {summary?.reserved ?? 0} reserved</div>
+                  <div className="kpi-sub">{summary?.occupied ?? 0} occupied · {summary?.reserved ?? 0} reserved</div>
                 </div>
 
                 <div className="kpi-card">
@@ -617,15 +707,15 @@ export default function Dashboard() {
                   <div className="kpi-val" style={{ color: '#c084fc' }}>
                     ₹{new Intl.NumberFormat('en-IN').format(summary?.revenue ?? 0)}
                   </div>
-                  <div className="kpi-sub">Total revenue recorded to date</div>
+                  <div className="kpi-sub">{payments.length} transactions recorded</div>
                 </div>
               </div>
 
-              {/* Facilities Overview */}
+              {/* Parking Facilities */}
               <div className="section-header">
                 <div>
-                  <h2>Your Parking Lots & Capacity</h2>
-                  <p>Derived lot capacity and active occupancy from relational views</p>
+                  <h2>Parking Lots & Utilization</h2>
+                  <p>Capacity derived from view: ParkingLotCapacity</p>
                 </div>
                 {staff.role === 'admin' && (
                   <button className="btn btn-primary btn-sm" onClick={() => setActiveModal('lot')}>
@@ -672,13 +762,13 @@ export default function Dashboard() {
                 })}
               </div>
 
-              {/* Live Activity & Quick Actions */}
+              {/* Live Sessions & Actions */}
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
                 <div className="panel">
                   <div className="section-header" style={{ marginBottom: '14px' }}>
                     <div>
                       <h2>Recent Parking Sessions</h2>
-                      <p>Real-time vehicle check-ins and check-outs</p>
+                      <p>Vehicle entry and exit history</p>
                     </div>
                     <button className="btn btn-outline btn-sm" onClick={() => setActiveTab('parking')}>
                       View all →
@@ -722,7 +812,7 @@ export default function Dashboard() {
                   <div className="section-header" style={{ marginBottom: '6px' }}>
                     <div>
                       <h2>Quick Floor Actions</h2>
-                      <p>Attendant and admin operational tasks</p>
+                      <p>Operational tasks</p>
                     </div>
                   </div>
 
@@ -740,7 +830,7 @@ export default function Dashboard() {
                     </button>
                   ) : (
                     <div style={{ fontSize: '12px', color: 'var(--text-dim)', padding: '8px', background: 'var(--bg-card)', borderRadius: '6px' }}>
-                      Attendant Mode: Customer & Lot registration is reserved for Administrators (RBAC).
+                      Attendant Mode: Floor check-in/out and reservations active. Administrative writes restricted (RBAC).
                     </div>
                   )}
                 </div>
@@ -748,13 +838,13 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* TAB 2: PARKING INVENTORY */}
+          {/* TAB 2: PARKING FACILITIES & BAYS */}
           {activeTab === 'parking' && (
             <div>
               <div className="section-header">
                 <div>
-                  <h2>Parking Inventory & Real-Time Bay Status</h2>
-                  <p>Spaces color-coded by database availability status (CHECK constraint enforced)</p>
+                  <h2>Facilities, Zones & Space Inventory</h2>
+                  <p>Entities: <code>ParkingLots</code> (1) contains (N) <code>Zones</code> (1) has (N) <code>Slots</code></p>
                 </div>
                 {staff.role === 'admin' && (
                   <div style={{ display: 'flex', gap: '10px' }}>
@@ -764,7 +854,6 @@ export default function Dashboard() {
                 )}
               </div>
 
-              {/* Group slots by Lot & Zone */}
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
                 <div className="panel">
                   {zones.map(z => {
@@ -795,12 +884,11 @@ export default function Dashboard() {
                   })}
                 </div>
 
-                {/* Active Sessions & Checkout Action */}
                 <div className="panel">
                   <div className="section-header" style={{ marginBottom: '14px' }}>
                     <div>
-                      <h2>Active Sessions</h2>
-                      <p>Check out and record payment</p>
+                      <h2>Currently Parked Vehicles</h2>
+                      <p>Active sessions with exit payment</p>
                     </div>
                   </div>
 
@@ -836,13 +924,13 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* TAB 3: PEOPLE & VEHICLES */}
+          {/* TAB 3: CUSTOMERS, LOYALTY & VEHICLES */}
           {activeTab === 'people' && (
             <div>
               <div className="section-header">
                 <div>
-                  <h2>Customer Directory & Registered Vehicles</h2>
-                  <p>Relational mapping: Users (1) owns (N) Vehicles with Loyalty Tier associations</p>
+                  <h2>Customers, Loyalty Rewards & Registered Vehicles</h2>
+                  <p>Entities: <code>Users</code> (N) belongs to (1) <code>LoyaltyTiers</code> | <code>Users</code> (1) owns (N) <code>Vehicles</code></p>
                 </div>
                 {staff.role === 'admin' && (
                   <div style={{ display: 'flex', gap: '10px' }}>
@@ -852,14 +940,31 @@ export default function Dashboard() {
                 )}
               </div>
 
+              {/* Loyalty Tiers Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
+                {loyaltyTiers.map(t => (
+                  <div key={t.tier_id} style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-subtle)', borderRadius: '10px', padding: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <strong style={{ color: '#60a5fa', fontSize: '14px' }}>{t.tier_name} Tier</strong>
+                      <span className="status-pill completed">{t.discount_pct}% Off</span>
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-dim)', marginTop: '6px' }}>
+                      Threshold: <strong>{t.min_points}</strong> points
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Customer Directory Table */}
               <div className="panel">
                 <div className="table-responsive">
                   <table className="data-table">
                     <thead>
                       <tr>
                         <th>Customer</th>
-                        <th>Email & Contact</th>
+                        <th>Email & Phone</th>
                         <th>Loyalty Tier</th>
+                        <th>Derived Points</th>
                         <th>Registered Vehicles</th>
                       </tr>
                     </thead>
@@ -870,7 +975,7 @@ export default function Dashboard() {
                           <tr key={u.user_id}>
                             <td>
                               <strong>{u.name}</strong>
-                              <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>ID #{u.user_id}</div>
+                              <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>User #{u.user_id}</div>
                             </td>
                             <td>
                               <div>{u.email}</div>
@@ -878,8 +983,11 @@ export default function Dashboard() {
                             </td>
                             <td>
                               <span className="status-pill completed">
-                                {u.tier_name || 'Standard'} ({u.discount_pct || 0}% off)
+                                {u.tier_name || 'Standard'} ({u.discount_pct || 0}% discount)
                               </span>
+                            </td>
+                            <td>
+                              <strong style={{ color: '#38bdf8' }}>{u.loyalty_points || 0}</strong> <small style={{ color: 'var(--text-dim)' }}>pts (derived)</small>
                             </td>
                             <td>
                               {userVehicles.length === 0 ? (
@@ -908,7 +1016,7 @@ export default function Dashboard() {
               <div className="section-header">
                 <div>
                   <h2>Pre-Booked Space Reservations</h2>
-                  <p>Enforced by database triggers preventing overlapping booking intervals</p>
+                  <p>Entity: <code>Reservations</code> (Trigger-enforced time-slot non-overlapping constraint)</p>
                 </div>
                 <button className="btn btn-primary btn-sm" onClick={() => setActiveModal('reservation')}>
                   ＋ New Reservation
@@ -951,7 +1059,204 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* TAB 5: NOSQL & VECTOR RUD */}
+          {/* TAB 5: TARIFFS & EV CHARGING SESSIONS */}
+          {activeTab === 'pricing_ev' && (
+            <div>
+              <div className="section-header">
+                <div>
+                  <h2>Tariff Rules & Electric Vehicle Charging Sessions</h2>
+                  <p>Entities: <code>PricingRules</code> & <code>ChargingSessions</code></p>
+                </div>
+                {staff.role === 'admin' && (
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button className="btn btn-outline btn-sm" onClick={() => setActiveModal('charging')}>＋ Log EV Charge</button>
+                    <button className="btn btn-primary btn-sm" onClick={() => setActiveModal('pricing_rule')}>＋ Add Pricing Rule</button>
+                  </div>
+                )}
+              </div>
+
+              {/* Pricing Rules Table */}
+              <div className="panel" style={{ marginBottom: '24px' }}>
+                <h3 style={{ fontSize: '15px', color: '#fff', marginBottom: '12px' }}>Facility Pricing Rules</h3>
+                <div className="table-responsive">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Rule ID</th>
+                        <th>Facility</th>
+                        <th>Bay Type</th>
+                        <th>Base Rate (₹/hr)</th>
+                        <th>Peak Multiplier</th>
+                        <th>Active Hours</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pricingRules.map(pr => (
+                        <tr key={pr.rule_id}>
+                          <td><strong>#{pr.rule_id}</strong></td>
+                          <td>{pr.lot_name}</td>
+                          <td><span className="status-pill completed">{pr.slot_type}</span></td>
+                          <td><strong>₹{pr.base_rate}</strong></td>
+                          <td>{pr.peak_multiplier}x</td>
+                          <td>{pr.start_hour}:00 – {pr.end_hour}:00</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Charging Sessions Table */}
+              <div className="panel">
+                <h3 style={{ fontSize: '15px', color: '#fff', marginBottom: '12px' }}>Electric Vehicle Charging Sessions</h3>
+                <div className="table-responsive">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Charge ID</th>
+                        <th>Session ID</th>
+                        <th>Vehicle Plate</th>
+                        <th>Energy Consumed (kWh)</th>
+                        <th>Charging Fee (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {chargingSessions.map(cs => (
+                        <tr key={cs.charge_id}>
+                          <td><strong>#{cs.charge_id}</strong></td>
+                          <td>Session #{cs.session_id}</td>
+                          <td><strong>{cs.plate_no}</strong></td>
+                          <td>{cs.kwh_used} kWh</td>
+                          <td><strong style={{ color: '#34d399' }}>₹{cs.cost}</strong></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 6: VIOLATIONS & IOT SENSOR LOGS */}
+          {activeTab === 'violations_sensors' && (
+            <div>
+              <div className="section-header">
+                <div>
+                  <h2>Parking Violations & Real-Time IoT Sensor Readings</h2>
+                  <p>Entities: <code>Violations</code> & <code>SensorLogs</code></p>
+                </div>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button className="btn btn-outline btn-sm" onClick={() => setActiveModal('sensor')}>＋ Record Sensor Ping</button>
+                  {staff.role === 'admin' && (
+                    <button className="btn btn-primary btn-sm" onClick={() => setActiveModal('violation')}>＋ Issue Violation Fine</button>
+                  )}
+                </div>
+              </div>
+
+              {/* Violations Table */}
+              <div className="panel" style={{ marginBottom: '24px' }}>
+                <h3 style={{ fontSize: '15px', color: '#fff', marginBottom: '12px' }}>Infractions & Fine Assessments</h3>
+                <div className="table-responsive">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Violation ID</th>
+                        <th>Vehicle</th>
+                        <th>Infraction Description</th>
+                        <th>Fine Assessed</th>
+                        <th>Facility</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {violations.map(v => (
+                        <tr key={v.violation_id}>
+                          <td><strong>#{v.violation_id}</strong></td>
+                          <td><strong>{v.plate_no}</strong></td>
+                          <td>{v.type}</td>
+                          <td><strong style={{ color: '#fca5a5' }}>₹{v.fine_amount}</strong></td>
+                          <td>{v.lot_name} · Slot #{v.slot_id}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Sensor Logs Table */}
+              <div className="panel">
+                <h3 style={{ fontSize: '15px', color: '#fff', marginBottom: '12px' }}>IoT Slot Ultrasonic / Presence Readings</h3>
+                <div className="table-responsive">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Log ID</th>
+                        <th>Space #</th>
+                        <th>Facility & Level</th>
+                        <th>Sensor Reading</th>
+                        <th>Slot State</th>
+                        <th>Timestamp</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sensorLogs.map(sl => (
+                        <tr key={sl.log_id}>
+                          <td><strong>#{sl.log_id}</strong></td>
+                          <td>Slot #{sl.slot_id}</td>
+                          <td>{sl.lot_name} · {sl.level}</td>
+                          <td><code>{sl.reading.toFixed(2)}</code></td>
+                          <td><span className={`status-pill ${sl.slot_status || 'available'}`}>{sl.slot_status || 'available'}</span></td>
+                          <td>{new Date(sl.logged_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 7: FINANCIALS & PAYMENTS */}
+          {activeTab === 'payments' && (
+            <div>
+              <div className="section-header">
+                <div>
+                  <h2>Financial Transactions & Payment Settlement Ledger</h2>
+                  <p>Entity: <code>Payments</code> (ACID Transaction Auditing)</p>
+                </div>
+              </div>
+
+              <div className="panel">
+                <div className="table-responsive">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Payment ID</th>
+                        <th>Session</th>
+                        <th>Vehicle Plate</th>
+                        <th>Amount Paid</th>
+                        <th>Payment Method</th>
+                        <th>Settled At</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {payments.map(p => (
+                        <tr key={p.payment_id}>
+                          <td><strong>#{p.payment_id}</strong></td>
+                          <td>Session #{p.session_id}</td>
+                          <td><strong>{p.plate_no}</strong></td>
+                          <td><strong style={{ color: '#34d399' }}>₹{p.amount}</strong></td>
+                          <td><span className="status-pill completed">{p.method}</span></td>
+                          <td>{new Date(p.paid_at).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 8: NOSQL & VECTOR RUD */}
           {activeTab === 'notes' && (
             <div>
               <div className="rubric-banner">
@@ -996,7 +1301,6 @@ export default function Dashboard() {
                   </button>
                 </div>
 
-                {/* Categories */}
                 <div style={{ display: 'flex', gap: '8px', marginTop: '14px', flexWrap: 'wrap' }}>
                   {['all', 'operations', 'maintenance', 'incident', 'ev_charging', 'security'].map(cat => (
                     <button
@@ -1015,7 +1319,7 @@ export default function Dashboard() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '14px' }}>
                 {notes.length === 0 ? (
                   <div className="panel" style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '40px' }}>
-                    No operations notes found matching query. Click &quot;Create Note&quot; to add a new document.
+                    No operations notes found. Click &quot;Create Note&quot; to add a new document.
                   </div>
                 ) : (
                   notes.map(n => (
@@ -1073,7 +1377,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* TAB 6: SQL CONSOLE & ANALYTICS */}
+          {/* TAB 9: SQL CONSOLE & ANALYTICS */}
           {activeTab === 'sql' && (
             <div>
               <div className="rubric-banner">
@@ -1127,7 +1431,6 @@ export default function Dashboard() {
                 )}
               </div>
 
-              {/* Query Results */}
               {queryResult && (
                 <div className="panel">
                   <div className="section-header" style={{ marginBottom: '12px' }}>
@@ -1168,7 +1471,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* TAB 7: ER DIAGRAM & SCHEMA */}
+          {/* TAB 10: ER DIAGRAM & SCHEMA */}
           {activeTab === 'er_schema' && (
             <div>
               <div className="rubric-banner">
@@ -1180,7 +1483,6 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Chen ER Diagram Embed */}
               <div className="panel" style={{ marginBottom: '24px' }}>
                 <div className="section-header">
                   <div>
@@ -1201,31 +1503,30 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Relational Schema Summary */}
               <div className="panel">
                 <div className="section-header">
                   <div>
-                    <h2>Relational Schema Mapping & Constraints (3NF Normalized)</h2>
+                    <h2>Relational Schema Mapping (All 13 Entities + RBAC in BCNF)</h2>
                     <p>Relational Algebra specification with Primary Keys (PK) and Foreign Keys (FK)</p>
                   </div>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '16px' }}>
                   {[
-                    { name: 'LoyaltyTiers', schema: 'tier_id (PK), tier_name (UQ), min_points, discount_pct (CHK 0-100)' },
-                    { name: 'Users', schema: 'user_id (PK), tier_id (FK), name, phone, email (UQ)' },
-                    { name: 'Vehicles', schema: 'vehicle_id (PK), user_id (FK), plate_no (UQ), type (CHK Car, SUV, EV...)' },
-                    { name: 'ParkingLots', schema: 'lot_id (PK), name, location' },
-                    { name: 'PricingRules', schema: 'rule_id (PK), lot_id (FK), slot_type, base_rate (CHK >=0), peak_multiplier, start_hour, end_hour' },
-                    { name: 'Zones', schema: 'zone_id (PK), lot_id (FK), level, zone_type' },
-                    { name: 'Slots', schema: 'slot_id (PK), zone_id (FK), slot_type, status (CHK available, occupied, reserved, maintenance)' },
-                    { name: 'Reservations', schema: 'res_id (PK), user_id (FK), vehicle_id (FK), slot_id (FK), start_time, end_time (CHK end > start), status' },
-                    { name: 'ParkingSessions', schema: 'session_id (PK), vehicle_id (FK), slot_id (FK), res_id (FK, UQ), entry_time, exit_time (CHK exit >= entry)' },
-                    { name: 'Payments', schema: 'payment_id (PK), session_id (FK), amount (CHK >=0), method (CHK UPI, Card, Cash...), paid_at' },
-                    { name: 'Violations', schema: 'violation_id (PK), session_id (FK), type, fine_amount (CHK >=0)' },
-                    { name: 'ChargingSessions', schema: 'charge_id (PK), session_id (FK), kwh_used (CHK >=0), cost (CHK >=0)' },
-                    { name: 'SensorLogs', schema: 'log_id (PK), slot_id (FK), reading, logged_at' },
-                    { name: 'StaffAccounts & Roles', schema: 'staff_id (PK), role_id (FK -> Roles), email (UQ), password_hash (scrypt)' }
+                    { name: '1. LoyaltyTiers', schema: 'tier_id (PK), tier_name (UQ), min_points, discount_pct (CHK 0-100)' },
+                    { name: '2. Users', schema: 'user_id (PK), tier_id (FK), name, phone, email (UQ), loyalty_points (derived)' },
+                    { name: '3. Vehicles', schema: 'vehicle_id (PK), user_id (FK), plate_no (UQ), type (CHK Car, SUV, EV...)' },
+                    { name: '4. ParkingLots', schema: 'lot_id (PK), name, location, total_capacity (derived)' },
+                    { name: '5. PricingRules', schema: 'rule_id (PK), lot_id (FK), slot_type, base_rate, peak_multiplier, start_hour, end_hour' },
+                    { name: '6. Zones', schema: 'zone_id (PK), lot_id (FK), level, zone_type' },
+                    { name: '7. Slots', schema: 'slot_id (PK), zone_id (FK), slot_type, status (CHK available, occupied, reserved, maintenance)' },
+                    { name: '8. Reservations', schema: 'res_id (PK), user_id (FK), vehicle_id (FK), slot_id (FK), start_time, end_time, status' },
+                    { name: '9. ParkingSessions', schema: 'session_id (PK), vehicle_id (FK), slot_id (FK), res_id (FK, UQ), entry_time, exit_time' },
+                    { name: '10. Payments', schema: 'payment_id (PK), session_id (FK), amount (CHK >=0), method (UPI, Card, Cash...), paid_at' },
+                    { name: '11. Violations', schema: 'violation_id (PK), session_id (FK), type, fine_amount' },
+                    { name: '12. ChargingSessions', schema: 'charge_id (PK), session_id (FK), kwh_used, cost' },
+                    { name: '13. SensorLogs', schema: 'log_id (PK), slot_id (FK), reading, logged_at' },
+                    { name: '14. Roles & StaffAccounts', schema: 'staff_id (PK), role_id (FK), email (UQ), password_hash (scrypt)' }
                   ].map(t => (
                     <div key={t.name} style={{ background: 'var(--bg-card)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
                       <strong style={{ color: '#60a5fa', fontSize: '13.5px' }}>{t.name}</strong>
@@ -1252,6 +1553,10 @@ export default function Dashboard() {
                 {activeModal === 'slot' && 'Add Parking Space'}
                 {activeModal === 'user' && 'Register New Customer'}
                 {activeModal === 'vehicle' && 'Register New Vehicle'}
+                {activeModal === 'pricing_rule' && 'Add Facility Pricing Rule'}
+                {activeModal === 'violation' && 'Issue Parking Violation Fine'}
+                {activeModal === 'charging' && 'Log EV Charging Consumption'}
+                {activeModal === 'sensor' && 'Record IoT Sensor Reading'}
                 {activeModal === 'reservation' && 'Book Parking Space Reservation'}
                 {activeModal === 'checkin' && 'Check in Vehicle (Start Session)'}
                 {activeModal === 'checkout' && 'Check out Vehicle & Settle Payment'}
@@ -1357,6 +1662,92 @@ export default function Dashboard() {
                         <option value="Motorcycle">Motorcycle</option>
                         <option value="Van">Van</option>
                       </select>
+                    </div>
+                  </>
+                )}
+
+                {activeModal === 'pricing_rule' && (
+                  <>
+                    <div className="form-group">
+                      <label>Parking Facility</label>
+                      <select className="form-select" required onChange={e => setModalData({ ...modalData, lot_id: e.target.value })}>
+                        <option value="">Select Facility...</option>
+                        {lots.map(l => <option key={l.lot_id} value={l.lot_id}>{l.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>Bay Type</label>
+                      <select className="form-select" defaultValue="Standard" onChange={e => setModalData({ ...modalData, slot_type: e.target.value })}>
+                        <option value="Standard">Standard</option>
+                        <option value="EV">EV Charging</option>
+                        <option value="Accessible">Accessible</option>
+                        <option value="VIP">VIP</option>
+                        <option value="Compact">Compact</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>Base Hourly Rate (₹)</label>
+                      <input className="form-input" type="number" min="0" step="5" defaultValue="40" required onChange={e => setModalData({ ...modalData, base_rate: e.target.value })} />
+                    </div>
+                    <div className="form-group">
+                      <label>Peak Multiplier</label>
+                      <input className="form-input" type="number" min="1.0" step="0.05" defaultValue="1.25" required onChange={e => setModalData({ ...modalData, peak_multiplier: e.target.value })} />
+                    </div>
+                  </>
+                )}
+
+                {activeModal === 'violation' && (
+                  <>
+                    <div className="form-group">
+                      <label>Active Parking Session</label>
+                      <select className="form-select" required onChange={e => setModalData({ ...modalData, session_id: e.target.value })}>
+                        <option value="">Select Session...</option>
+                        {sessions.map(s => <option key={s.session_id} value={s.session_id}>Session #{s.session_id} — {s.plate_no} ({s.lot_name})</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>Infraction Type</label>
+                      <input className="form-input" placeholder="e.g. Overstaying allotted reservation duration" required onChange={e => setModalData({ ...modalData, type: e.target.value })} />
+                    </div>
+                    <div className="form-group">
+                      <label>Fine Amount (₹)</label>
+                      <input className="form-input" type="number" min="0" step="50" defaultValue="150" required onChange={e => setModalData({ ...modalData, fine_amount: e.target.value })} />
+                    </div>
+                  </>
+                )}
+
+                {activeModal === 'charging' && (
+                  <>
+                    <div className="form-group">
+                      <label>Active Parking Session</label>
+                      <select className="form-select" required onChange={e => setModalData({ ...modalData, session_id: e.target.value })}>
+                        <option value="">Select Session...</option>
+                        {sessions.map(s => <option key={s.session_id} value={s.session_id}>Session #{s.session_id} — {s.plate_no}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>Energy Consumed (kWh)</label>
+                      <input className="form-input" type="number" min="0.1" step="0.1" defaultValue="15.0" required onChange={e => setModalData({ ...modalData, kwh_used: e.target.value })} />
+                    </div>
+                    <div className="form-group">
+                      <label>Total Charging Cost (₹)</label>
+                      <input className="form-input" type="number" min="0" step="10" defaultValue="225" required onChange={e => setModalData({ ...modalData, cost: e.target.value })} />
+                    </div>
+                  </>
+                )}
+
+                {activeModal === 'sensor' && (
+                  <>
+                    <div className="form-group">
+                      <label>Parking Space</label>
+                      <select className="form-select" required onChange={e => setModalData({ ...modalData, slot_id: e.target.value })}>
+                        <option value="">Select Space...</option>
+                        {slots.map(s => <option key={s.slot_id} value={s.slot_id}>Space #{s.slot_id} · {s.lot_name} ({s.status})</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>Sensor Telemetry Reading (0.00 = vacant, 1.00 = occupied)</label>
+                      <input className="form-input" type="number" min="0" max="1" step="0.05" defaultValue="1.00" required onChange={e => setModalData({ ...modalData, reading: e.target.value })} />
                     </div>
                   </>
                 )}
