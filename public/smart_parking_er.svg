@@ -1,0 +1,268 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="100%" height="100%" style="background:#0f172a; font-family:'Plus Jakarta Sans', sans-serif;">
+  <defs>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Title & Legend -->
+  <text x="50" y="45" fill="#f8fafc" font-size="22" font-weight="800">SMART PARKING MANAGEMENT SYSTEM — CHEN ER DIAGRAM</text>
+  <text x="50" y="70" fill="#94a3b8" font-size="13">PES University · Dept of CSE · Experiential Learning Level 3 MiniProject</text>
+  <g transform="translate(1100, 30)">
+    <rect x="0" y="0" width="110" height="32" rx="4" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
+    <text x="55" y="21" fill="#38bdf8" font-size="12" font-weight="700" text-anchor="middle">Entity</text>
+    
+    <polygon points="175,0 215,16 175,32 135,16" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
+    <text x="175" y="21" fill="#f59e0b" font-size="11" font-weight="700" text-anchor="middle">Relation</text>
+
+    <ellipse cx="280" cy="16" rx="45" ry="16" fill="#1e293b" stroke="#34d399" stroke-width="2"/>
+    <text x="280" y="20" fill="#34d399" font-size="11" text-anchor="middle" text-decoration="underline">PK Attr</text>
+
+    <ellipse cx="395" cy="16" rx="45" ry="16" fill="#1e293b" stroke="#c084fc" stroke-width="2" stroke-dasharray="4 3"/>
+    <text x="395" y="20" fill="#c084fc" font-size="11" text-anchor="middle">Derived</text>
+  </g>
+
+  <!-- Relationship Lines -->
+  <!-- Users to LoyaltyTiers -->
+  <line x1="160" y1="200" x2="310" y2="200" stroke="#64748b" stroke-width="2"/>
+  <line x1="390" y1="200" x2="480" y2="200" stroke="#64748b" stroke-width="2"/>
+  
+  <!-- Users to Vehicles -->
+  <line x1="560" y1="200" x2="680" y2="200" stroke="#64748b" stroke-width="2"/>
+  <line x1="760" y1="200" x2="860" y2="200" stroke="#64748b" stroke-width="2"/>
+
+  <!-- ParkingLots to Zones -->
+  <line x1="1280" y1="200" x2="1280" y2="310" stroke="#64748b" stroke-width="2"/>
+  <line x1="1280" y1="370" x2="1280" y2="440" stroke="#64748b" stroke-width="2"/>
+
+  <!-- Zones to Slots -->
+  <line x1="1280" y1="490" x2="1280" y2="580" stroke="#64748b" stroke-width="2"/>
+  <line x1="1280" y1="640" x2="1280" y2="700" stroke="#64748b" stroke-width="2"/>
+
+  <!-- ParkingLots to PricingRules -->
+  <line x1="1350" y1="175" x2="1440" y2="175" stroke="#64748b" stroke-width="2"/>
+
+  <!-- Users to Reservations -->
+  <line x1="520" y1="225" x2="520" y2="350" stroke="#64748b" stroke-width="2"/>
+  <line x1="520" y1="410" x2="520" y2="470" stroke="#64748b" stroke-width="2"/>
+
+  <!-- Vehicles to Reservations -->
+  <line x1="880" y1="225" x2="720" y2="410" stroke="#64748b" stroke-width="2"/>
+  <line x1="680" y1="435" x2="600" y2="480" stroke="#64748b" stroke-width="2"/>
+
+  <!-- Slots to Reservations -->
+  <line x1="1210" y1="720" x2="800" y2="600" stroke="#64748b" stroke-width="2"/>
+  <line x1="740" y1="580" x2="590" y2="510" stroke="#64748b" stroke-width="2"/>
+
+  <!-- Vehicles to ParkingSessions -->
+  <line x1="930" y1="225" x2="930" y2="450" stroke="#64748b" stroke-width="2"/>
+  <line x1="930" y1="510" x2="930" y2="570" stroke="#64748b" stroke-width="2"/>
+
+  <!-- Slots to ParkingSessions -->
+  <line x1="1210" y1="715" x2="1080" y2="640" stroke="#64748b" stroke-width="2"/>
+  <line x1="1020" y1="620" x2="1000" y2="600" stroke="#64748b" stroke-width="2"/>
+
+  <!-- ParkingSessions to Payments -->
+  <line x1="880" y1="615" x2="650" y2="700" stroke="#64748b" stroke-width="2"/>
+  <line x1="600" y1="720" x2="540" y2="750" stroke="#64748b" stroke-width="2"/>
+
+  <!-- ParkingSessions to Violations -->
+  <line x1="930" y1="625" x2="930" y2="720" stroke="#64748b" stroke-width="2"/>
+  <line x1="930" y1="770" x2="930" y2="820" stroke="#64748b" stroke-width="2"/>
+
+  <!-- ParkingSessions to ChargingSessions -->
+  <line x1="980" y1="615" x2="1100" y2="700" stroke="#64748b" stroke-width="2"/>
+  <line x1="1130" y1="740" x2="1160" y2="780" stroke="#64748b" stroke-width="2"/>
+
+  <!-- Slots to SensorLogs -->
+  <line x1="1350" y1="725" x2="1440" y2="725" stroke="#64748b" stroke-width="2"/>
+
+  <!-- ENTITIES (Rectangles) -->
+  <!-- 1. LoyaltyTiers -->
+  <g transform="translate(40, 175)" filter="url(#shadow)">
+    <rect width="130" height="50" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="2.5"/>
+    <text x="65" y="30" fill="#f8fafc" font-size="14" font-weight="700" text-anchor="middle">LoyaltyTiers</text>
+  </g>
+  <ellipse cx="40" cy="140" rx="35" ry="16" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+  <text x="40" y="144" fill="#34d399" font-size="10" font-weight="700" text-anchor="middle" text-decoration="underline">tier_id</text>
+  <line x1="65" y1="152" x2="80" y2="175" stroke="#64748b"/>
+
+  <!-- 2. Users -->
+  <g transform="translate(470, 175)" filter="url(#shadow)">
+    <rect width="110" height="50" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="2.5"/>
+    <text x="55" y="30" fill="#f8fafc" font-size="14" font-weight="700" text-anchor="middle">Users</text>
+  </g>
+  <ellipse cx="470" cy="130" rx="35" ry="16" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+  <text x="470" y="134" fill="#34d399" font-size="10" font-weight="700" text-anchor="middle" text-decoration="underline">user_id</text>
+  <line x1="490" y1="144" x2="505" y2="175" stroke="#64748b"/>
+  <ellipse cx="555" cy="130" rx="35" ry="16" fill="#0f172a" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="555" y="134" fill="#cbd5e1" font-size="10" text-anchor="middle">email (UQ)</text>
+  <line x1="545" y1="144" x2="535" y2="175" stroke="#64748b"/>
+
+  <!-- 3. Vehicles -->
+  <g transform="translate(850, 175)" filter="url(#shadow)">
+    <rect width="120" height="50" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="2.5"/>
+    <text x="60" y="30" fill="#f8fafc" font-size="14" font-weight="700" text-anchor="middle">Vehicles</text>
+  </g>
+  <ellipse cx="850" cy="130" rx="40" ry="16" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+  <text x="850" y="134" fill="#34d399" font-size="10" font-weight="700" text-anchor="middle" text-decoration="underline">vehicle_id</text>
+  <line x1="875" y1="144" x2="890" y2="175" stroke="#64748b"/>
+  <ellipse cx="945" cy="130" rx="40" ry="16" fill="#0f172a" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="945" y="134" fill="#cbd5e1" font-size="10" text-anchor="middle">plate_no (UQ)</text>
+  <line x1="935" y1="144" x2="925" y2="175" stroke="#64748b"/>
+
+  <!-- 4. ParkingLots -->
+  <g transform="translate(1220, 150)" filter="url(#shadow)">
+    <rect width="130" height="50" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="2.5"/>
+    <text x="65" y="30" fill="#f8fafc" font-size="14" font-weight="700" text-anchor="middle">ParkingLots</text>
+  </g>
+  <ellipse cx="1200" cy="105" rx="35" ry="16" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+  <text x="1200" y="109" fill="#34d399" font-size="10" font-weight="700" text-anchor="middle" text-decoration="underline">lot_id</text>
+  <ellipse cx="1340" cy="105" rx="50" ry="16" fill="#0f172a" stroke="#c084fc" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text x="1340" y="109" fill="#c084fc" font-size="10" text-anchor="middle">total_capacity</text>
+
+  <!-- 5. PricingRules -->
+  <g transform="translate(1430, 150)" filter="url(#shadow)">
+    <rect width="130" height="50" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="2.5"/>
+    <text x="65" y="30" fill="#f8fafc" font-size="14" font-weight="700" text-anchor="middle">PricingRules</text>
+  </g>
+  <ellipse cx="1495" cy="105" rx="35" ry="16" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+  <text x="1495" y="109" fill="#34d399" font-size="10" font-weight="700" text-anchor="middle" text-decoration="underline">rule_id</text>
+
+  <!-- 6. Zones -->
+  <g transform="translate(1230, 440)" filter="url(#shadow)">
+    <rect width="100" height="50" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="2.5"/>
+    <text x="50" y="30" fill="#f8fafc" font-size="14" font-weight="700" text-anchor="middle">Zones</text>
+  </g>
+  <ellipse cx="1380" cy="465" rx="35" ry="16" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+  <text x="1380" y="469" fill="#34d399" font-size="10" font-weight="700" text-anchor="middle" text-decoration="underline">zone_id</text>
+  <line x1="1330" y1="465" x2="1345" y2="465" stroke="#64748b"/>
+
+  <!-- 7. Slots -->
+  <g transform="translate(1225, 700)" filter="url(#shadow)">
+    <rect width="110" height="50" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="2.5"/>
+    <text x="55" y="30" fill="#f8fafc" font-size="14" font-weight="700" text-anchor="middle">Slots</text>
+  </g>
+  <ellipse cx="1225" cy="780" rx="35" ry="16" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+  <text x="1225" y="784" fill="#34d399" font-size="10" font-weight="700" text-anchor="middle" text-decoration="underline">slot_id</text>
+  <line x1="1245" y1="750" x2="1235" y2="765" stroke="#64748b"/>
+
+  <!-- 8. Reservations -->
+  <g transform="translate(460, 470)" filter="url(#shadow)">
+    <rect width="130" height="50" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="2.5"/>
+    <text x="65" y="30" fill="#f8fafc" font-size="14" font-weight="700" text-anchor="middle">Reservations</text>
+  </g>
+  <ellipse cx="400" cy="495" rx="35" ry="16" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+  <text x="400" y="499" fill="#34d399" font-size="10" font-weight="700" text-anchor="middle" text-decoration="underline">res_id</text>
+  <line x1="435" y1="495" x2="460" y2="495" stroke="#64748b"/>
+
+  <!-- 9. ParkingSessions -->
+  <g transform="translate(860, 570)" filter="url(#shadow)">
+    <rect width="140" height="55" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="2.5"/>
+    <text x="70" y="33" fill="#f8fafc" font-size="14" font-weight="700" text-anchor="middle">ParkingSessions</text>
+  </g>
+  <ellipse cx="800" cy="570" rx="40" ry="16" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+  <text x="800" y="574" fill="#34d399" font-size="10" font-weight="700" text-anchor="middle" text-decoration="underline">session_id</text>
+  <line x1="840" y1="575" x2="860" y2="585" stroke="#64748b"/>
+
+  <!-- 10. Payments -->
+  <g transform="translate(420, 750)" filter="url(#shadow)">
+    <rect width="120" height="50" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="2.5"/>
+    <text x="60" y="30" fill="#f8fafc" font-size="14" font-weight="700" text-anchor="middle">Payments</text>
+  </g>
+  <ellipse cx="360" cy="775" rx="40" ry="16" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+  <text x="360" y="779" fill="#34d399" font-size="10" font-weight="700" text-anchor="middle" text-decoration="underline">payment_id</text>
+  <line x1="400" y1="775" x2="420" y2="775" stroke="#64748b"/>
+
+  <!-- 11. Violations -->
+  <g transform="translate(870, 820)" filter="url(#shadow)">
+    <rect width="120" height="50" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="2.5"/>
+    <text x="60" y="30" fill="#f8fafc" font-size="14" font-weight="700" text-anchor="middle">Violations</text>
+  </g>
+  <ellipse cx="1030" cy="845" rx="40" ry="16" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+  <text x="1030" y="849" fill="#34d399" font-size="10" font-weight="700" text-anchor="middle" text-decoration="underline">violation_id</text>
+  <line x1="990" y1="845" x2="1000" y2="845" stroke="#64748b"/>
+
+  <!-- 12. ChargingSessions -->
+  <g transform="translate(1140, 780)" filter="url(#shadow)">
+    <rect width="145" height="50" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="2.5"/>
+    <text x="72" y="30" fill="#f8fafc" font-size="13" font-weight="700" text-anchor="middle">ChargingSessions</text>
+  </g>
+  <ellipse cx="1330" cy="805" rx="38" ry="16" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+  <text x="1330" y="809" fill="#34d399" font-size="10" font-weight="700" text-anchor="middle" text-decoration="underline">charge_id</text>
+  <line x1="1285" y1="805" x2="1295" y2="805" stroke="#64748b"/>
+
+  <!-- 13. SensorLogs -->
+  <g transform="translate(1440, 700)" filter="url(#shadow)">
+    <rect width="120" height="50" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="2.5"/>
+    <text x="60" y="30" fill="#f8fafc" font-size="14" font-weight="700" text-anchor="middle">SensorLogs</text>
+  </g>
+  <ellipse cx="1500" cy="780" rx="35" ry="16" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+  <text x="1500" y="784" fill="#34d399" font-size="10" font-weight="700" text-anchor="middle" text-decoration="underline">log_id</text>
+  <line x1="1500" y1="750" x2="1500" y2="764" stroke="#64748b"/>
+
+  <!-- 14. RBAC Roles & StaffAccounts Box -->
+  <g transform="translate(50, 850)">
+    <rect width="380" height="110" rx="10" fill="#1e293b" stroke="#8b5cf6" stroke-width="1.5" stroke-dasharray="6 4"/>
+    <text x="20" y="28" fill="#c084fc" font-size="13" font-weight="700">AUTHENTICATION & RBAC ENTITIES (Rubric Item 12)</text>
+    <rect x="20" y="45" width="90" height="40" rx="6" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+    <text x="65" y="70" fill="#f8fafc" font-size="12" font-weight="600" text-anchor="middle">Roles</text>
+    <polygon points="150,50 170,65 150,80 130,65" fill="#0f172a" stroke="#f59e0b" stroke-width="1.5"/>
+    <text x="150" y="69" fill="#f59e0b" font-size="9" text-anchor="middle">has</text>
+    <rect x="195" y="45" width="120" height="40" rx="6" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+    <text x="255" y="70" fill="#f8fafc" font-size="12" font-weight="600" text-anchor="middle">StaffAccounts</text>
+  </g>
+
+  <!-- RELATIONSHIP DIAMONDS -->
+  <!-- belongs to (Users - LoyaltyTiers) -->
+  <polygon points="350,180 390,200 350,220 310,200" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
+  <text x="350" y="204" fill="#f59e0b" font-size="10" font-weight="700" text-anchor="middle">belongs to</text>
+  <text x="290" y="195" fill="#94a3b8" font-size="11" font-weight="700">1</text>
+  <text x="410" y="195" fill="#94a3b8" font-size="11" font-weight="700">N</text>
+
+  <!-- owns (Users - Vehicles) -->
+  <polygon points="720,180 760,200 720,220 680,200" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
+  <text x="720" y="204" fill="#f59e0b" font-size="11" font-weight="700" text-anchor="middle">owns</text>
+  <text x="660" y="195" fill="#94a3b8" font-size="11" font-weight="700">1</text>
+  <text x="780" y="195" fill="#94a3b8" font-size="11" font-weight="700">N</text>
+
+  <!-- contains (ParkingLots - Zones) -->
+  <polygon points="1280,310 1315,340 1280,370 1245,340" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
+  <text x="1280" y="344" fill="#f59e0b" font-size="10" font-weight="700" text-anchor="middle">contains</text>
+  <text x="1295" y="300" fill="#94a3b8" font-size="11" font-weight="700">1</text>
+  <text x="1295" y="395" fill="#94a3b8" font-size="11" font-weight="700">N</text>
+
+  <!-- has (Zones - Slots) -->
+  <polygon points="1280,580 1315,610 1280,640 1245,610" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
+  <text x="1280" y="614" fill="#f59e0b" font-size="11" font-weight="700" text-anchor="middle">has</text>
+  <text x="1295" y="570" fill="#94a3b8" font-size="11" font-weight="700">1</text>
+  <text x="1295" y="665" fill="#94a3b8" font-size="11" font-weight="700">N</text>
+
+  <!-- makes (Users - Reservations) -->
+  <polygon points="520,350 550,380 520,410 490,380" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
+  <text x="520" y="384" fill="#f59e0b" font-size="10" font-weight="700" text-anchor="middle">makes</text>
+  <text x="535" y="340" fill="#94a3b8" font-size="11" font-weight="700">1</text>
+  <text x="535" y="430" fill="#94a3b8" font-size="11" font-weight="700">N</text>
+
+  <!-- parks (Vehicles - ParkingSessions) -->
+  <polygon points="930,450 965,480 930,510 895,480" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
+  <text x="930" y="484" fill="#f59e0b" font-size="11" font-weight="700" text-anchor="middle">parks</text>
+  <text x="945" y="440" fill="#94a3b8" font-size="11" font-weight="700">1</text>
+  <text x="945" y="530" fill="#94a3b8" font-size="11" font-weight="700">N</text>
+
+  <!-- pays for (ParkingSessions - Payments) -->
+  <polygon points="650,690 685,715 650,740 615,715" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
+  <text x="650" y="719" fill="#f59e0b" font-size="10" font-weight="700" text-anchor="middle">pays for</text>
+  <text x="690" y="690" fill="#94a3b8" font-size="11" font-weight="700">1</text>
+  <text x="590" y="730" fill="#94a3b8" font-size="11" font-weight="700">N</text>
+
+  <!-- incurs (ParkingSessions - Violations) -->
+  <polygon points="930,720 965,745 930,770 895,745" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
+  <text x="930" y="749" fill="#f59e0b" font-size="10" font-weight="700" text-anchor="middle">incurs</text>
+  <text x="945" y="710" fill="#94a3b8" font-size="11" font-weight="700">1</text>
+  <text x="945" y="790" fill="#94a3b8" font-size="11" font-weight="700">N</text>
+
+  <!-- monitors (Slots - SensorLogs) -->
+  <polygon points="1395,710 1425,725 1395,740 1365,725" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
+  <text x="1395" y="729" fill="#f59e0b" font-size="9" font-weight="700" text-anchor="middle">monitors</text>
+</svg>

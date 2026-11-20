@@ -12,6 +12,7 @@
     <button class="nav" data-view="parking"><span>▦</span> Parking</button>
     <button class="nav" data-view="people"><span>♙</span> People & vehicles</button>
     <button class="nav" data-view="reservations"><span>◷</span> Reservations</button>
+    <button class="nav" data-view="notes"><span>▤</span> Operations notes</button>
     <div class="sidebar-foot"><div class="live-dot"></div> Database connected <small>SQLite · local</small></div>
   </aside>
   <main class="main">
@@ -43,6 +44,13 @@
     <section id="reservations" class="view" hidden>
       <div class="section-heading"><div><span class="eyebrow">BOOK A SPACE</span><h2>Reservations</h2></div><button class="button button-primary" data-action="reservation">＋ New reservation</button></div>
       <div class="panel"><div class="panel-heading"><div><span class="eyebrow">UPCOMING & RECENT</span><h3>Reservation list</h3></div></div><div id="reservation-list"></div></div>
+    </section>
+    <section id="notes" class="view" hidden>
+      <div class="section-heading"><div><span class="eyebrow">MONGODB DOCUMENT STORE</span><h2>Operations notes</h2></div></div>
+      <section class="panel"><div class="panel-heading"><div><span class="eyebrow">NO SQL RUD</span><h3>Shared parking notes</h3></div></div>
+        <form id="note-form" class="note-form"><input name="title" placeholder="Note title" required maxlength="120"><input name="category" placeholder="Category" value="operations" maxlength="40"><textarea name="note" placeholder="Add a handover, maintenance or incident note…" required rows="3" maxlength="2000"></textarea><button class="button button-primary">Save note</button></form>
+        <div id="note-list"></div>
+      </section>
     </section>
   </main>
   <dialog id="modal"><form id="modal-form" method="dialog"><div class="modal-head"><div><span class="eyebrow" id="modal-eyebrow">NEW RECORD</span><h2 id="modal-title"></h2></div><button class="close" value="cancel" aria-label="Close">×</button></div><div id="form-fields" class="form-fields"></div><div class="modal-actions"><button class="button button-outline" value="cancel">Cancel</button><button class="button button-primary" id="submit-button" value="default">Save</button></div></form></dialog>

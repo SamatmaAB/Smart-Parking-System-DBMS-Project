@@ -1,10 +1,24 @@
 const $ = s => document.querySelector(s);
-const state = { data: null };
+const state = { data: null, notes: [] };
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = amount => new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:0}).format(amount || 0);
 const fmt = value => value ? new Date(value).toLocaleString([], {dateStyle:'medium',timeStyle:'short'}) : '—';
 function toast(message, error=false) { const el=$('#toast'); el.textContent=message; el.classList.toggle('error',error); el.hidden=false; clearTimeout(toast.timer); toast.timer=setTimeout(()=>el.hidden=true,3200); }
 async function request(url, options={}) { const response=await fetch(url,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}}); const data=await response.json(); if(!response.ok) throw new Error(data.error||'Request failed'); return data; }
+let staff = null;
+async function initialize() {
+  try { staff=(await request('/api/me')).staff; }
+  catch {
+    document.body.insertAdjacentHTML('afterbegin', `<div class="login-shade"><form id="login-form" class="login-card"><span class="eyebrow">PARKWISE STAFF</span><h1>Sign in</h1><p>Use your staff account to manage parking operations.</p><label>Email<input name="email" type="email" autocomplete="username" required value="admin@parkwise.local"></label><label>Password<input name="password" type="password" autocomplete="current-password" required autofocus></label><button class="button button-primary">Sign in</button><div id="login-error" role="alert"></div><small>Demo: admin@parkwise.local / Parkwise!2026</small></form></div>`);
+    $('#login-form').addEventListener('submit', async event=>{event.preventDefault();const data=Object.fromEntries(new FormData(event.currentTarget));try{await request('/api/login',{method:'POST',body:JSON.stringify(data)});location.reload();}catch(error){$('#login-error').textContent=error.message;}});
+    return;
+  }
+  const actions=document.querySelector('.top-actions');
+  actions.insertAdjacentHTML('afterbegin', `<span class="staff-badge">${escapeHtml(staff.name)} · ${escapeHtml(staff.role)}</span><button class="button button-outline" id="logout">Sign out</button>`);
+  $('#logout').addEventListener('click',async()=>{await request('/api/logout',{method:'POST'});location.reload();});
+  if(staff.role!=='admin') { $('#note-form').hidden=true; document.querySelectorAll('[data-action="lot"],[data-action="user"],[data-action="vehicle"],[data-action="zone"],[data-action="slot"]').forEach(el=>el.hidden=true); }
+  refresh();
+}
 function empty(msg) { return `<div class="empty">${escapeHtml(msg)}</div>`; }
 async function refresh() {
   try {
@@ -67,11 +81,14 @@ function openForm(action,id) {
   $('#modal').dataset.url=cfg.url; $('#modal-form').dataset.action=action;
   $('#modal').showModal();
 }
-document.addEventListener('click',event=>{
-  const viewButton=event.target.closest('[data-view]'); if(viewButton){const name=viewButton.dataset.view;document.querySelectorAll('.view').forEach(v=>v.hidden=v.id!==name);document.querySelectorAll('.nav').forEach(v=>v.classList.toggle('active',v.dataset.view===name));$('#page-title').textContent=({overview:'Overview',parking:'Parking',people:'People & vehicles',reservations:'Reservations'})[name];return;}
+document.addEventListener('click',async event=>{
+  const viewButton=event.target.closest('[data-view]'); if(viewButton){const name=viewButton.dataset.view;document.querySelectorAll('.view').forEach(v=>v.hidden=v.id!==name);document.querySelectorAll('.nav').forEach(v=>v.classList.toggle('active',v.dataset.view===name));$('#page-title').textContent=({overview:'Overview',parking:'Parking',people:'People & vehicles',reservations:'Reservations',notes:'Operations notes'})[name];if(name==='notes')loadNotes();return;}
   const actionButton=event.target.closest('[data-action]'); if(actionButton){openForm(actionButton.dataset.action,actionButton.dataset.id);return;}
   if(event.target.id==='refresh')refresh();
+  const noteButton=event.target.closest('[data-note-action]'); if(noteButton){const id=noteButton.dataset.id;try{if(noteButton.dataset.noteAction==='delete'){if(!confirm('Delete this note?'))return;await request(`/api/notes/${id}`,{method:'DELETE'});}else{const title=prompt('Edit note title',noteButton.dataset.title),note=prompt('Edit note text',noteButton.dataset.note),category=prompt('Category',noteButton.dataset.category);if(title===null||note===null||category===null)return;await request(`/api/notes/${id}`,{method:'PUT',body:JSON.stringify({title,note,category})});}await loadNotes();}catch(error){toast(error.message,true);} }
 });
+async function loadNotes(){try{state.notes=(await request('/api/notes')).notes;$('#note-list').innerHTML=state.notes.length?state.notes.map(n=>`<article class="note-card"><div><span class="tag">${escapeHtml(n.category)}</span><h3>${escapeHtml(n.title)}</h3><p>${escapeHtml(n.note)}</p><small>${escapeHtml(n.createdBy||'staff')} · ${fmt(n.updatedAt)}</small></div>${staff.role==='admin'?`<div class="note-actions"><button class="button button-outline" data-note-action="edit" data-id="${escapeHtml(n._id)}" data-title="${escapeHtml(n.title)}" data-note="${escapeHtml(n.note)}" data-category="${escapeHtml(n.category)}">Edit</button><button class="button button-outline" data-note-action="delete" data-id="${escapeHtml(n._id)}">Delete</button></div>`:''}</article>`).join(''):'<div class="empty">No operations notes yet.</div>';}catch(error){$('#note-list').innerHTML=`<div class="empty">${escapeHtml(error.message)}. Configure MongoDB to enable notes.</div>`;}}
+$('#note-form').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;try{await request('/api/notes',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(form)))});form.reset();form.elements.category.value='operations';await loadNotes();toast('Note saved.');}catch(error){toast(error.message,true);}});
 $('#modal-form').addEventListener('submit',async event=>{
   event.preventDefault();const action=event.currentTarget.dataset.action;const form=new FormData(event.currentTarget);const data=Object.fromEntries(form.entries());
   for(const key of ['lot_id','zone_id','user_id','vehicle_id','slot_id','res_id','session_id','amount'])if(data[key])data[key]=Number(data[key]);
@@ -81,4 +98,4 @@ $('#modal-form').addEventListener('submit',async event=>{
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#modal').open)$('#modal').close();});
 $('#today').textContent=new Intl.DateTimeFormat('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'}).format(new Date());
-refresh();
+initialize();
